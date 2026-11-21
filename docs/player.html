@@ -1,39 +1,66 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Viddy video player</title><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:white;font:14px system-ui}iframe{width:100%;height:100%;border:0;display:block}p{padding:20px}</style></head><body><script>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Viddy video player</title><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:white;font:14px system-ui}iframe{width:100%;height:100%;border:0;display:block}</style></head><body><script>
 (() => {
- const parameters=new URLSearchParams(location.hash.slice(1)),id=parameters.get('id'),preview=parameters.get('mode')==='preview',nonce=parameters.get('nonce');
+ const params=new URLSearchParams(location.hash.slice(1)),id=params.get('id'),preview=params.get('mode')==='preview',nonce=params.get('nonce');
  if(!/^[\w-]{11}$/.test(id??'')){document.body.textContent='Open a video in Viddy to play it here.';return}
- const autoStart=preview||parameters.get('autoplay')!=='0';
- let player,ready=false,startAttempts=0,startTimer,playing=false,failed=false;
- function start(){
-  if(!ready||!autoStart||playing||failed||startAttempts>=3)return;
-  startAttempts++;if(preview)player.mute();startTimer=setTimeout(blocked,1500);player.playVideo();
- }
- function blocked(){
-  if(!autoStart||playing||failed)return;
-  clearTimeout(startTimer);
-  if(!ready)return;
-  if(startAttempts<3)startTimer=setTimeout(start,300*startAttempts);
-  else startTimer=setTimeout(()=>{if(!playing&&!failed)send(preview?'blocked':'autoplay-blocked')},500);
- }
- addEventListener('pagehide',()=>{clearTimeout(startTimer)});
- function send(event,value,sample){parent.postMessage(preview?{type:'viddy-video-preview',id,state:event,code:value}:{type:'viddy-player',nonce,event,value,sample},'*')}
- function sample(){if(!ready||preview)return;send('sample',null,{time:player.getCurrentTime(),duration:player.getDuration(),state:player.getPlayerState(),volume:player.getVolume(),muted:player.isMuted(),url:player.getVideoUrl()})}
+ const automatic=preview||params.get('autoplay')!=='0',origin='https://www.youtube.com',widget=1;
  const frame=document.createElement('iframe');frame.title=preview?'Muted YouTube video preview':'YouTube video player';frame.allow='autoplay *; encrypted-media *; fullscreen *; picture-in-picture *';frame.allowFullscreen=true;frame.referrerPolicy='strict-origin-when-cross-origin';
- const query=new URLSearchParams({autoplay:'0',controls:preview?'0':'1',mute:preview?'1':'0',playsinline:'1',rel:'0',enablejsapi:'1',origin:location.origin,widget_referrer:'https://app.puretube.desktop/'});
- frame.src='https://www.youtube.com/embed/'+id+'?'+query;document.body.appendChild(frame);
+ const query=new URLSearchParams({autoplay:'0',controls:preview?'0':'1',mute:preview?'1':'0',playsinline:'1',rel:'0',enablejsapi:'1',origin:location.origin,widgetid:String(widget),widget_referrer:'https://app.puretube.desktop/'});
+ frame.src=origin+'/embed/'+id+'?'+query;
+ let ready=false,subscribed=false,failed=false,playing=false,attempts=0,timer,lastError=null;
+ let info={currentTime:0,duration:0,playerState:-1,volume:100,muted:preview,videoUrl:'https://www.youtube.com/watch?v='+id};
+ const diagnostic=window.viddyPlayerDiagnostic={transport:'embedded-player-messages',ready:false,lastEvent:'created',attempts:0};
+ function report(){parent.postMessage({type:'viddy-player-diagnostic',mode:preview?'preview':'watch',ready,lastEvent:diagnostic.lastEvent,attempts,state:info.playerState,error:lastError,build:'0.26.9'},'*')}
+ function send(event,value,sample){report();parent.postMessage(preview?{type:'viddy-video-preview',id,state:event,code:value}:{type:'viddy-player',nonce,event,value,sample},'*')}
+ function message(event,extra={}){frame.contentWindow?.postMessage(JSON.stringify({event,id:widget,channel:'widget',...extra}),origin)}
+ function command(func,args=[]){message('command',{func,args})}
+ function sample(){if(ready&&!preview)send('sample',null,{time:info.currentTime,duration:info.duration,state:info.playerState,volume:info.volume,muted:info.muted,url:info.videoUrl})}
+ function blocked(){
+  if(!automatic||playing||failed||!ready)return;clearTimeout(timer);
+  if(info.playerState===3)return;
+  if(attempts<3)timer=setTimeout(start,300*attempts);
+  else timer=setTimeout(()=>{if(!playing&&!failed)send(preview?'blocked':'autoplay-blocked')},500);
+ }
+ function start(){
+  if(!ready||!automatic||playing||failed||attempts>=3)return;
+  diagnostic.attempts=++attempts;if(preview)command('mute');timer=setTimeout(blocked,1500);command('playVideo');
+ }
+ function state(value){
+  if(!Number.isFinite(value))return;info.playerState=value;
+  if(value===1){playing=true;clearTimeout(timer)}
+  sample();if(preview){if(value===1)send('playing');if(value===0)send('ended')}else send('state',value);
+ }
+ function onReady(){if(ready||failed)return;ready=true;diagnostic.ready=true;clearTimeout(deadline);sample();send('ready');start()}
+ function subscribe(){if(subscribed)return;subscribed=true;for(const name of ['onReady','onStateChange','onError','onAutoplayBlocked'])command('addEventListener',[name])}
  addEventListener('message',event=>{
-  const d=event.data;if(preview||event.source!==parent||d?.type!=='viddy-player-command'||d.nonce!==nonce||!ready||!Array.isArray(d.args))return;
-  if(['playVideo','pauseVideo','mute','unMute'].includes(d.method)&&d.args.length===0)player[d.method]();
-  else if(d.method==='setVolume'&&Number.isFinite(d.args[0]))player.setVolume(Math.max(0,Math.min(100,d.args[0])));
-  else if(d.method==='seekTo'&&Number.isFinite(d.args[0]))player.seekTo(Math.max(0,d.args[0]),!!d.args[1]);
-  else if(d.method==='loadVideoById'&&typeof d.args[0]==='string'&&/^[\w-]{11}$/.test(d.args[0]))player.loadVideoById(d.args[0]);
-  sample();
+  if(event.source===frame.contentWindow&&event.origin===origin){
+   let data;try{data=typeof event.data==='string'?JSON.parse(event.data):event.data}catch{return}
+   if(!data||data.id!==widget)return;diagnostic.lastEvent=data.event;
+   subscribe();
+   if(data.event==='readyToListen'){message('listening');return}
+   if(data.event==='initialDelivery'||data.event==='infoDelivery'){
+    const value=data.info;if(value&&typeof value==='object'){
+     for(const key of ['currentTime','duration','playerState','volume'])if(Number.isFinite(value[key]))info[key]=value[key];
+     if(typeof value.muted==='boolean')info.muted=value.muted;
+     if(typeof value.videoUrl==='string')info.videoUrl=value.videoUrl;
+     if(value.videoData?.video_id&&/^[\w-]{11}$/.test(value.videoData.video_id))info.videoUrl='https://www.youtube.com/watch?v='+value.videoData.video_id;
+     if(ready&&value.playerState===1&&!playing)state(1);sample();
+    }
+   }else if(data.event==='onReady')onReady();
+   else if(data.event==='onStateChange')state(data.info);
+   else if(data.event==='onAutoplayBlocked')blocked();
+   else if(data.event==='onError'){failed=true;lastError=Number.isFinite(data.info)?data.info:null;clearTimeout(timer);send('error',data.info)}
+   return;
+  }
+  const data=event.data;if(preview||event.source!==parent||data?.type!=='viddy-player-command'||data.nonce!==nonce||!ready||!Array.isArray(data.args))return;
+  if(['playVideo','pauseVideo','mute','unMute'].includes(data.method)&&data.args.length===0){if(data.method==='pauseVideo')clearTimeout(timer);command(data.method)}
+  else if(data.method==='setVolume'&&Number.isFinite(data.args[0]))command('setVolume',[Math.max(0,Math.min(100,data.args[0]))]);
+  else if(data.method==='seekTo'&&Number.isFinite(data.args[0]))command('seekTo',[Math.max(0,data.args[0]),!!data.args[1]]);
+  else if(data.method==='loadVideoById'&&typeof data.args[0]==='string'&&/^[\w-]{11}$/.test(data.args[0]))command('loadVideoById',[data.args[0]]);
  });
- window.onYouTubeIframeAPIReady=function(){player=window.viddyPreviewPlayer=new YT.Player(frame,{events:{
-  onReady:e=>{ready=true;sample();send('ready');start()},
-  onStateChange:e=>{if(e.data===1){playing=true;clearTimeout(startTimer)}sample();if(preview){if(e.data===1)send('playing');if(e.data===0)send('ended')}else send('state',e.data)},
-  onError:e=>{failed=true;clearTimeout(startTimer);send('error',e.data)},onAutoplayBlocked:blocked
- }})};
- const script=document.createElement('script');script.src='https://www.youtube.com/iframe_api';script.onerror=()=>send('error',0);document.body.appendChild(script);setInterval(sample,250);
+ frame.addEventListener('load',()=>message('listening'));document.body.appendChild(frame);
+ const listening=setInterval(()=>{if(!ready&&!failed)message('listening')},250);
+ const deadline=setTimeout(()=>{if(!ready&&!failed){failed=true;diagnostic.lastEvent='handshake-timeout';send('error',0)}},12000);
+ window.viddyPreviewPlayer={getCurrentTime:()=>info.currentTime,getPlayerState:()=>info.playerState};
+ setInterval(sample,250);addEventListener('pagehide',()=>{clearInterval(listening);clearTimeout(deadline);clearTimeout(timer)});
 })();
 </script></body></html>

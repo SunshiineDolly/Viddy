@@ -157,7 +157,33 @@ mod tests {
 #[tauri::command]
 pub fn youtube_player_url(id: String, mode: String) -> Result<String, &'static str> {
  if id.len()!=11 || !id.bytes().all(|b|b.is_ascii_alphanumeric() || b==b'_' || b==b'-') || !matches!(mode.as_str(), "preview"|"watch") {return Err("Invalid player request.")}
- let mut url=Url::parse("https://sunshiinedolly.github.io/Viddy/player.html?v=0.26.8").unwrap();
+ let mut url=Url::parse("https://sunshiinedolly.github.io/Viddy/player.html?v=0.26.9").unwrap();
  let fragment=format!("id={id}&mode={mode}");
  url.set_fragment(Some(&fragment));Ok(url.into())
+}
+
+// Read only this running application's public bundle metadata. Never read the
+// Keychain, library, environment secrets or user-identifying filesystem paths.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn playback_diagnostics() -> serde_json::Value {
+    let executable=std::env::current_exe().ok();
+    let bundle=executable.as_ref().and_then(|path|path.parent()).and_then(|path|path.parent()).and_then(|path|path.parent());
+    let mut installed_version=None;
+    let mut stable_identity=false;
+    let mut ad_hoc=false;
+    let mut location="unknown";
+    if let Some(bundle)=bundle {
+        let path=bundle.to_string_lossy();
+        location=if path.contains("/AppTranslocation/"){"translocated"}else if path.starts_with("/Volumes/"){"disk image"}else if path.starts_with("/Applications/")||path.contains("/Applications/"){"Applications"}else{"other"};
+        if let Ok(output)=std::process::Command::new("/usr/bin/plutil").args(["-extract","CFBundleShortVersionString","raw","-o","-"]).arg(bundle.join("Contents/Info.plist")).output(){
+            if output.status.success(){installed_version=String::from_utf8(output.stdout).ok().map(|value|value.trim().to_owned());}
+        }
+        if let Ok(output)=std::process::Command::new("/usr/bin/codesign").args(["-d","--verbose=4"]).arg(bundle).output(){
+            let text=String::from_utf8_lossy(&output.stderr);
+            stable_identity=text.lines().any(|line|line=="Authority=Viddy Mac Release Identity");
+            ad_hoc=text.lines().any(|line|line=="Signature=adhoc");
+        }
+    }
+    serde_json::json!({"runtimeVersion":env!("CARGO_PKG_VERSION"),"installedVersion":installed_version,"launchLocation":location,"stableSigningIdentity":stable_identity,"adHocSignature":ad_hoc,"sessionStorage":"macOS Keychain v2"})
 }

@@ -29,16 +29,24 @@ impl Session {
     }
 }
 
+fn scope(path: &Path) -> String {
+    Sha256::digest(path.to_string_lossy().as_bytes()).iter().map(|b|format!("{b:02x}")).collect()
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
 fn vault(path: &Path) -> Result<keyring::Entry> {
     // Isolated profiles never read or modify production credentials.
-    let scope = Sha256::digest(path.to_string_lossy().as_bytes());
-    let scope = scope.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let scope = scope(path);
     keyring::Entry::new("Viddy.DiscordSession.v1", &scope)
         .map_err(|_| "Could not open secure account storage.".into())
 }
 
 fn load_session(path: &Path) -> Result<Option<Session>> {
-    match vault(path)?.get_password() {
+    #[cfg(target_os = "macos")]
+    let raw=crate::mac_session::read(&scope(path)).and_then(|value|value.ok_or(keyring::Error::NoEntry));
+    #[cfg(not(target_os = "macos"))]
+    let raw=vault(path)?.get_password();
+    match raw {
         Ok(raw) => {
             let session: Session = serde_json::from_str(&raw).map_err(|_| "Could not read the saved account. Log out and try again.")?;
             if !session.valid() { return Err("The saved account is invalid. Log out and try again.".into()); }
@@ -49,8 +57,20 @@ fn load_session(path: &Path) -> Result<Option<Session>> {
     }
 }
 
+fn save_session(path: &Path, raw: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    let saved=crate::mac_session::save(&scope(path),raw);
+    #[cfg(not(target_os = "macos"))]
+    let saved=vault(path)?.set_password(raw);
+    saved.map_err(|_| "Could not securely save your sign-in. Please try again.".into())
+}
+
 fn clear_session(path: &Path) -> Result<()> {
-    match vault(path)?.delete_credential() {
+    #[cfg(target_os = "macos")]
+    let cleared=crate::mac_session::clear(&scope(path));
+    #[cfg(not(target_os = "macos"))]
+    let cleared=vault(path)?.delete_credential();
+    match cleared {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(_) => Err("Could not remove the saved sign-in. Try logging out again.".into()),
     }
@@ -135,7 +155,7 @@ pub async fn account_poll(app: State<'_, AppData>, account: State<'_, Account>) 
             .map_err(|_| "Could not migrate your local account link.")?;
         let base = bind(&tx, &session.identity.id)?;
         let raw = serde_json::to_string(&session).map_err(|_| "Could not save your sign-in.")?;
-        vault(&app.db)?.set_password(&raw).map_err(|_| "Could not securely save your sign-in. Please try again.")?;
+        save_session(&app.db,&raw).map_err(|_| "Could not securely save your sign-in. Please try again.")?;
         if tx.commit().is_err() { let _ = clear_session(&app.db); return Err("Could not link your library.".into()); }
         base
     };
@@ -402,6 +422,11 @@ mod tests {
         clear_session(&profile).unwrap();
         assert!(status.success());
         assert!(load_session(&profile).unwrap().is_none());
+        #[cfg(target_os = "macos")]
+        {
+            vault(&profile).unwrap().delete_credential().unwrap();
+            keyring::Entry::new("Viddy.DiscordSession.v2",&scope(&profile)).unwrap().delete_credential().unwrap();
+        }
     }
 
     #[test]

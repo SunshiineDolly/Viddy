@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react'
 import {AccountSettings} from './account-settings'
 import type {ViddyAccount} from './use-account'
+import {copyPlaybackDiagnostics} from './playback-diagnostics'
 import {isMac} from './platform'
 import {invoke} from '@tauri-apps/api/core'
 import {Palette,Shield,Monitor,Download,Upload,Trash2,PlaySquare,RefreshCw} from 'lucide-react'
@@ -25,6 +26,7 @@ export function Preferences({data,setting,change,updates,account}:{data:Library;
  <label>Thumbnail density <select value={s.density} onChange={e=>setting('density',e.target.value as Settings['density'])}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>{toggle('collapsed','Collapse sidebar')}{toggle('themedCursor','Use Viddy’s themed cursor')}{toggle('intro','Play the Viddy intro on launch')}<button className="button" disabled={!s.intro} onClick={()=>window.dispatchEvent(new Event('viddy-intro'))}>Preview intro</button></section>
  <ContentFilters settings={s} onKeywords={values=>setting('keywords',values)} onBlocked={values=>setting('blocked',values)}/>
  <section><h2><PlaySquare/> Playback</h2><p>Videos start when selected. Use the player’s controls for playback or fullscreen. YouTube may show ads and related videos inside its player.</p>
+ {isMac&&<button className="button" disabled={busy} onClick={()=>void action(async()=>{await copyPlaybackDiagnostics();setMessage('Playback diagnostics copied. This report contains no account or library data.')})}>Copy playback diagnostics</button>}
  {toggle('videoPreviews','Play muted video previews on hover')}{isMac&&<p>Video previews have their own control. Reduce Motion still limits interface animations.</p>}
  {toggle('autoplay','Autoplay recommendations after a video ends')}{toggle('progress','Track playback progress')}{toggle('showTime','Show viewing time this session')}
  <label>Daily viewing reminder (minutes; 0 disables) <input type="number" min="0" max="1440" value={s.reminder} onChange={e=>setting('reminder',Math.min(1440,Math.max(0,Math.floor(Number(e.target.value)||0))))}/></label>

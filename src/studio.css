@@ -563,3 +563,5 @@
 
 /* WebKit must see the muted video frame while it starts playback. */
 .thumbnail>.thumbnail-preview.thumbnail-preview-mac{opacity:1}
+
+.update-notice{width:min(440px,calc(100vw - 48px));padding:26px;border:1px solid var(--border);border-radius:20px;background:var(--panel);color:var(--text);box-shadow:0 24px 90px #0006}.update-notice::backdrop{background:#0008}.update-notice h2{font-size:25px;margin:10px 0}.update-notice p{line-height:1.55;color:var(--sub)}.update-notice>.row{justify-content:flex-end;gap:10px;margin-top:24px}

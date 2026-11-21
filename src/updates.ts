@@ -19,7 +19,7 @@ export function useUpdates(enabled:boolean) {
    finally{active.current=false;setBusy('')}
  }
  async function check(silent=false) {
-   await perform('checking',async()=>{setRelease(await invoke<Update|null>('update_check'));setLastChecked(Date.now());setMessage('')},silent)
+   await perform('checking',async()=>{setRelease(await invoke<Update|null>('update_check'));setLastChecked(Date.now());if(!silent)setMessage('')},silent)
  }
  useEffect(()=>{
    if(!enabled)return
@@ -33,10 +33,12 @@ export function useUpdates(enabled:boolean) {
    return()=>{mounted=false}
  },[enabled])
  useEffect(()=>{
-   if(!configured)return
-   const timer=setInterval(()=>void check(true),6*60*60_000)
-   return()=>clearInterval(timer)
- },[configured])
+   if(!configured||!enabled)return
+   const refresh=()=>{if(!document.hidden)void check(true)}
+   const timer=setInterval(refresh,30_000)
+   window.addEventListener('focus',refresh);window.addEventListener('online',refresh);document.addEventListener('visibilitychange',refresh)
+   return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);window.removeEventListener('online',refresh);document.removeEventListener('visibilitychange',refresh)}
+ },[configured,enabled])
  return {configured,release,busy,message,check,version,progress,lastChecked,
    install:()=>release?perform('installing',async()=>{setProgress(undefined);const channel=new Channel<Progress>();channel.onmessage=setProgress;await invoke('update_install',{version:release.version,progress:channel})}):Promise.resolve()
  }

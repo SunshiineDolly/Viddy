@@ -41,9 +41,11 @@ pub fn config() -> Option<(&'static str, Url)> {
     ))
 }
 fn client(app: &AppHandle, state: &AppData) -> Result<tauri_plugin_updater::Updater> {
-    let (key, url) = config()
+    let (key, mut url) = config()
         .filter(|_| !state.isolated)
         .ok_or("Signed updates are not configured for this build.")?;
+    let stamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()/30;
+    url.query_pairs_mut().append_pair("check", &stamp.to_string());
     app.updater_builder()
         .pubkey(key)
         .endpoints(vec![url])

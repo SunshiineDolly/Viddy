@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod account;
+#[cfg(any(target_os = "macos",test))]
+mod mac_session;
 mod account_callback;
 mod comments;
 mod desktop;
@@ -273,6 +275,8 @@ fn main() {
         youtube_embed::youtube_embed_port,
         #[cfg(target_os = "macos")]
         youtube_embed::youtube_player_url,
+        #[cfg(target_os = "macos")]
+        youtube_embed::playback_diagnostics,
         account::account_configured,
         account::account_start,
         library_profile,

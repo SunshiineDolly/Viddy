@@ -1,0 +1,20 @@
+import {isMac} from './platform'
+import {invoke} from '@tauri-apps/api/core'
+
+type PlayerDiagnostic={mode:string;ready:boolean;lastEvent:string;attempts:number;state:number;error:number|null;build:string}
+const recent:PlayerDiagnostic[]=[]
+if(isMac)window.addEventListener('message',event=>{
+ const data=event.data
+ if(data?.type!=='viddy-player-diagnostic')return
+ const frame=[...document.querySelectorAll('iframe')].find(frame=>frame.contentWindow===event.source)
+ if(!frame)return
+ let url:URL;try{url=new URL(frame.src)}catch{return}
+ if(event.origin!==url.origin||!url.pathname.endsWith('/player.html'))return
+ if(typeof data.ready!=='boolean'||typeof data.lastEvent!=='string'||!Number.isFinite(data.attempts)||!Number.isFinite(data.state))return
+ recent.push({mode:data.mode==='preview'?'preview':'watch',ready:data.ready,lastEvent:data.lastEvent.slice(0,50),attempts:data.attempts,state:data.state,error:Number.isFinite(data.error)?data.error:null,build:typeof data.build==='string'?data.build.slice(0,20):'unknown'})
+ if(recent.length>12)recent.shift()
+})
+export async function copyPlaybackDiagnostics(){
+ const native=await invoke<Record<string,unknown>>('playback_diagnostics')
+ await navigator.clipboard.writeText(JSON.stringify({...native,engine:navigator.userAgent,players:recent},null,2))
+}
