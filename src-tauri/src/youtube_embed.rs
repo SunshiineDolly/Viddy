@@ -52,8 +52,8 @@ fn serve(mut stream: TcpStream, port: u16) -> std::io::Result<()> {
         }
     }
     let path = request.strip_prefix("GET ").and_then(|r| r.split_once(' ')).map(|(path, _)| path);
-    if let Some(id) = path.and_then(|p| p.strip_prefix("/preview?")).filter(|_| valid_host).and_then(preview_id) {
-        let page = preview_page(&id, port);
+    if let Some(id) = path.and_then(|p| p.strip_prefix("/preview?").or_else(|| p.strip_prefix("/player?"))).filter(|_| valid_host).and_then(preview_id) {
+        let page = if path.is_some_and(|p|p.starts_with("/player?")) { include_str!("player-frame.html").replace("{{ID}}", &id).replace("{{PORT}}", &port.to_string()) } else { preview_page(&id, port) };
         return write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nReferrer-Policy: strict-origin-when-cross-origin\r\nContent-Security-Policy: default-src 'none'; script-src 'unsafe-inline' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube.com; style-src 'unsafe-inline'\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{page}", page.len());
     }
     let target = request.strip_prefix("GET ")

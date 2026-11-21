@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}iframe{width:100%;height:100%;border:0;display:block}</style></head><body>
+<iframe id="player" title="YouTube video player" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" src="https://www.youtube.com/embed/{{ID}}?autoplay=1&amp;controls=1&amp;playsinline=1&amp;rel=0&amp;enablejsapi=1&amp;origin=http%3A%2F%2F127.0.0.1%3A{{PORT}}&amp;widget_referrer=https%3A%2F%2Fapp.puretube.desktop%2F"></iframe>
+<script>
+const nonce=location.hash.slice(1);let player,ready=false;
+function send(event,value,sample){parent.postMessage({type:'viddy-player',nonce,event,value,sample},'*')}
+function sample(){if(!ready)return;send('sample',null,{time:player.getCurrentTime(),duration:player.getDuration(),state:player.getPlayerState(),volume:player.getVolume(),muted:player.isMuted(),url:player.getVideoUrl()})}
+addEventListener('message',event=>{
+ const d=event.data;if(event.source!==parent||d?.type!=='viddy-player-command'||d.nonce!==nonce||!ready||!Array.isArray(d.args))return;
+ if(['playVideo','pauseVideo','mute','unMute'].includes(d.method)&&d.args.length===0)player[d.method]();
+ else if(d.method==='setVolume'&&Number.isFinite(d.args[0]))player.setVolume(Math.max(0,Math.min(100,d.args[0])));
+ else if(d.method==='seekTo'&&Number.isFinite(d.args[0]))player.seekTo(Math.max(0,d.args[0]),!!d.args[1]);
+ else if(d.method==='loadVideoById'&&typeof d.args[0]==='string'&&/^[\w-]{11}$/.test(d.args[0]))player.loadVideoById(d.args[0]);
+ sample();
+});
+window.onYouTubeIframeAPIReady=function(){player=new YT.Player(document.getElementById('player'),{events:{onReady:()=>{ready=true;sample();send('ready')},onStateChange:e=>{sample();send('state',e.data)},onError:e=>send('error',e.data),onAutoplayBlocked:()=>send('autoplay-blocked')}})};
+setInterval(sample,250);
+</script><script src="https://www.youtube.com/iframe_api" onerror="send('error',0)"></script></body></html>

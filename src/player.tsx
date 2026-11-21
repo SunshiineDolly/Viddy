@@ -1,3 +1,5 @@
+import {isMac} from './platform'
+import {MacPlayer} from './mac-player'
 import {configureYouTubeFrame} from './youtube-embed'
 import {RefreshCw,Volume2,VolumeX} from 'lucide-react'
 import {useEffect,useRef,useState} from 'react'
@@ -39,6 +41,8 @@ export function PlayerFrame({id,start,live=false,onSample,onPlay,onElapsed,onEnd
    const host=mount.current!
    const frame=document.createElement('iframe')
    frame.title='YouTube video player'
+   frame.dataset.videoId=id
+   frame.dataset.start=String(initial.current)
    frame.allow='autoplay; encrypted-media; fullscreen; picture-in-picture'
    frame.allowFullscreen=true
    const params=new URLSearchParams({autoplay:roomTarget.current?.playing===false?'0':'1',controls:'1',enablejsapi:'1',origin:location.origin,rel:'0',playsinline:'1'})
@@ -88,10 +92,10 @@ export function PlayerFrame({id,start,live=false,onSample,onPlay,onElapsed,onEnd
      }
    }
    const timer=setInterval(sample,1000)
-   void configureYouTubeFrame(frame,id,params).then(()=>{
+   void (isMac?Promise.resolve():configureYouTubeFrame(frame,id,params)).then(()=>{
      if(closed)return
      host.appendChild(frame)
-     return playerApi()
+     return isMac?{Player:MacPlayer}:playerApi()
    }).then(YT=>{
      if(closed||!YT) return
      player=new YT.Player(frame,{events:{
@@ -113,7 +117,7 @@ export function PlayerFrame({id,start,live=false,onSample,onPlay,onElapsed,onEnd
          if(e.data===0 || e.data===2) sample(true)
          if(e.data===0&&!live)callbacks.current.onEnded?.()
        },
-       onError:e=>{if(closed)return;count(false);if([101,150].includes(e.data))callbacks.current.onRestricted?.();callbacks.current.onPlaybackError?.(e.data);setError(e.data===153?'YouTube couldn’t play this video in Viddy. Try another result.':[101,150].includes(e.data)?'The creator has disabled embedded playback.':e.data===100?'This video is unavailable or private.':'YouTube could not play this video here.')}
+       onError:e=>{if(closed)return;count(false);if(e.data===101)callbacks.current.onRestricted?.();callbacks.current.onPlaybackError?.(e.data);setError(e.data===153?'YouTube couldn’t play this video in Viddy. Try another result.':[101,150].includes(e.data)?'YouTube refused embedded playback. You can retry in this player.':e.data===100?'This video is unavailable or private.':'YouTube could not play this video here.')}
      }})
    }).catch(e=>{if(!closed){setError(String(e.message??e));callbacks.current.onPlaybackError?.(0)}})
    const flush=()=>{if(played) sample(true)}

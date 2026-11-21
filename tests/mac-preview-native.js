@@ -23,12 +23,14 @@
     document.querySelector(".sidebar [aria-label=Home]").click();await wait(400);
     const card=document.querySelector(".content > div:not([hidden]) .card .thumbnail");
     card.dispatchEvent(new MouseEvent("mouseover",{bubbles:true,relatedTarget:null}));await wait(1000);
-    report.previewsCanBeDisabled=!document.querySelector(".thumbnail-preview iframe");finish();
+    report.previewsCanBeDisabled=!document.querySelector(".thumbnail-preview iframe");card.click();
   }
   function finish(){if(done)return;done=true;report.frames=[...document.querySelectorAll('.thumbnail-preview iframe')].map(f=>f.src);native('preview_check_result',{report});}
   addEventListener('error',e=>report.errors.push(e.message));
   addEventListener('securitypolicyviolation',e=>report.errors.push('CSP '+e.violatedDirective+' '+e.blockedURI));
   addEventListener('message',e=>{
+    if(e.data?.type==='viddy-player'&&e.data.event==='ready'){report.mainPlayerReady=true;report.mainPlayerFrame=document.querySelector('.player iframe')?.src;setTimeout(finish,1500)}
+    if(e.data?.type==='viddy-player'&&e.data.event==='error')report.mainPlayerError=e.data.value;
     if(e.data?.type==='viddy-video-preview'){report.states.push({state:e.data.state,code:e.data.code});if(e.data.state==='error'||e.data.state==='blocked'){e.stopImmediatePropagation();report.playerRejected=true;setTimeout(()=>{if(report.playerText?.includes('Sign in to confirm')&&report.playerText?.includes('not a bot')){report.externalPlaybackBlockedByYouTube=true;void checkToggle()}else finish()},3500)}}
     if(e.data?.type==='viddy-native-page'){report.playerText=e.data.text;report.playerStatus=e.data.status};
     if(e.data?.type==='viddy-native-error')report.errors.push(e.data.error);

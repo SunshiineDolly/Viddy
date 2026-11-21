@@ -9,9 +9,9 @@ import net from 'node:net'
 // Isolated preview integration check. Synthetic library; real public YouTube playback.
 const root=mkdtempSync(join(process.env.TEMP,'puretube-features-'))
 const web=http.createServer(async(req,res)=>{
- if(req.url.startsWith('/preview?')){
+ if(req.url.startsWith('/preview?')||req.url.startsWith('/player?')){
   const id=new URL(req.url,'http://localhost').searchParams.get('id');if(!/^[\w-]{11}$/.test(id??'')){res.writeHead(404).end();return}
-  res.setHeader('Content-Type','text/html');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube.com; style-src 'unsafe-inline'");res.end(readFileSync('src-tauri/src/preview-player.html','utf8').replaceAll('{{ID}}',id).replaceAll('{{PORT}}',String(web.address().port)));return
+  res.setHeader('Content-Type','text/html');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube.com; style-src 'unsafe-inline'");res.end(readFileSync(req.url.startsWith('/player?')?'src-tauri/src/player-frame.html':'src-tauri/src/preview-player.html','utf8').replaceAll('{{ID}}',id).replaceAll('{{PORT}}',String(web.address().port)));return
  }
  const path=resolve('dist','.'+(req.url==='/'?'/index.html':req.url.split('?')[0]));
  if(!path.startsWith(resolve('dist')+sep)){res.writeHead(404).end();return}
@@ -19,7 +19,7 @@ const web=http.createServer(async(req,res)=>{
 }).listen(0,'127.0.0.1');await new Promise(ok=>web.once('listening',ok));
 const server=net.createServer().listen(0,'127.0.0.1');await new Promise(ok=>server.once('listening',ok));const port=server.address().port;await new Promise(ok=>server.close(ok))
 const edge=process.env.EDGE_EXE??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
-const child=spawn(edge,['--headless=new','--no-first-run','--disable-extensions','--disable-background-networking','--remote-debugging-port='+port,'--user-data-dir='+root,'about:blank'],{stdio:'ignore'})
+const child=spawn(edge,['--headless=new','--autoplay-policy=no-user-gesture-required','--no-first-run','--disable-extensions','--disable-background-networking','--remote-debugging-port='+port,'--user-data-dir='+root,'about:blank'],{stdio:'ignore'})
 let ws,seq=0
 async function eventually(task,ms=40000){let last;const until=Date.now()+ms;while(Date.now()<until){try{const answer=await task();if(answer)return answer}catch(e){last=e}await wait(200)}console.log(await value('({cards:document.querySelectorAll(".card").length,frame:document.querySelector(".thumbnail-preview iframe")?.src,preview:document.querySelector(".thumbnail-preview iframe")?.contentDocument?.documentElement.outerHTML.slice(-1500),text:document.querySelector(".content")?.textContent.slice(0,500)})').catch(()=>null));throw Error('Feature check timed out'+(last?': '+last.message:''))}
 async function pages(){return (await fetch('http://127.0.0.1:'+port+'/json/list',{signal:AbortSignal.timeout(1500)})).json()}
@@ -43,6 +43,8 @@ try {
  window.fixture={data:signedOut?guest:personal,personal};window.fixture.data.history={};window.fixture.data.progress={};window.fixture.data.viewing={};window.fixture.data.savedVideos={};window.fixture.data.liveReminders={};window.fixture.data.favorites=[];window.fixture.data.later=[];
  const sample={id:'jNQXAC9IVRw',title:'Preview sample',description:'Preview test',metadataComplete:true,channelId:'UC0000000000000000000002',channel:'Example creator',image:'',date:'2026-11-21',duration:120,shorts:false,paid:false,embeddable:true};
  window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>0,unregisterCallback:()=>{},invoke:async(cmd,args={})=>{
+  if(cmd==='save'){window.fixture.data=args.data;return null}
+  if(cmd==='original_player'){window.fixture.originalWindows=(window.fixture.originalWindows??0)+1;return null}
   if(cmd==='youtube_embed_port')return PREVIEW_PORT;
   if(cmd==='load')return window.fixture.data;
   if(cmd==='library_profile')return signedOut?null:id;
@@ -75,6 +77,17 @@ try {
  await value('window.dispatchEvent(new MessageEvent("message",{origin:"https://example.invalid",data:{type:"viddy-video-preview",id:"jNQXAC9IVRw",state:"error"}}))');assert(await value('!!document.querySelector(".thumbnail-preview-mac iframe")'));
  report.macUsesVideoPlayer=true;report.playerTimeAdvances=true;report.noImageSubstitute=true;report.matchingHttpOrigin=true;report.invalidMessagesIgnored=true;
  await leave();await eventually(()=>value('!document.querySelector(".thumbnail-preview iframe")'));report.stopsOnLeave=true;
+ if(process.env.VIDDY_FULL_PLAYER){
+  await value('window.playerSamples=[];window.addEventListener("message",e=>{if(e.data?.type==="viddy-player")window.playerSamples.push(e.data)})');
+  await value('document.querySelector(".content > div:not([hidden]) .card .thumbnail").click()');
+  await eventually(()=>value('document.querySelector(".player iframe")?.src.includes("/player?")'));
+  await eventually(()=>value('window.playerSamples.some(s=>s.event==="sample"&&s.sample.time>1&&s.sample.state===1)'),60000);
+  await eventually(()=>value('!!window.fixture.data.history?.jNQXAC9IVRw'));
+  assert.equal(await value('window.fixture.originalWindows??0'),0);
+  await value('(()=>{const f=document.querySelector(".player iframe"),u=new URL(f.src);f.contentWindow.postMessage({type:"viddy-player-command",nonce:u.hash.slice(1),method:"pauseVideo",args:[]},u.origin)})()');
+  await eventually(()=>value('window.playerSamples.at(-1)?.sample?.state===2'));
+  report.macFullVideoPlaysInsideApp=true;report.playbackHistoryRecorded=true;report.playerCommandsWork=true;report.noAutomaticSeparateWindow=true;
+ }
  if(!process.env.VIDDY_REAL_PREVIEW){
   await value('localStorage.setItem("preview-platform","Win32")');await call('Page.reload');await eventually(()=>value('navigator.platform==="Win32"'));await eventually(()=>value('!!document.querySelector(".sidebar [aria-label=Settings]:not(:disabled)")'));await hover();await eventually(()=>value('!!document.querySelector(".thumbnail-preview[data-playing=true] iframe")'));
   assert((await value('document.querySelector(".thumbnail-preview iframe").src')).startsWith('https://www.youtube.com/embed/'));assert.equal(await value('!!document.querySelector(".thumbnail-preview-mac")'),false);report.windowsPlayerUnchanged=true;
