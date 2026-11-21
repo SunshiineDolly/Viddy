@@ -157,7 +157,7 @@ mod tests {
 #[tauri::command]
 pub fn youtube_player_url(id: String, mode: String) -> Result<String, &'static str> {
  if id.len()!=11 || !id.bytes().all(|b|b.is_ascii_alphanumeric() || b==b'_' || b==b'-') || !matches!(mode.as_str(), "preview"|"watch") {return Err("Invalid player request.")}
- let mut url=Url::parse("https://sunshiinedolly.github.io/Viddy/player.html").unwrap();
+ let mut url=Url::parse("https://sunshiinedolly.github.io/Viddy/player.html?v=0.26.8").unwrap();
  let fragment=format!("id={id}&mode={mode}");
  url.set_fragment(Some(&fragment));Ok(url.into())
 }

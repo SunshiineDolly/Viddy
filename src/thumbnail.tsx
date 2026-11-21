@@ -16,7 +16,7 @@ function MacYouTubePreview({id}:{id:string}){
   const host=mount.current!
   let active=true,origin=''
   const frame=document.createElement('iframe')
-  frame.title='Muted YouTube video preview';frame.tabIndex=-1;frame.allow='autoplay; encrypted-media'
+  frame.title='Muted YouTube video preview';frame.tabIndex=-1;frame.allow='autoplay *; encrypted-media *'
   const receive=(event:MessageEvent)=>{
    if(!active||event.source!==frame.contentWindow||event.origin!==origin||event.data?.type!=='viddy-video-preview'||event.data.id!==id)return
    if(['error','blocked','ended'].includes(event.data.state)){frame.remove();setFailed(true)}

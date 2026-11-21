@@ -20,7 +20,7 @@ const web=http.createServer(async(req,res)=>{
 }).listen(0,'127.0.0.1');await new Promise(ok=>web.once('listening',ok));
 const server=net.createServer().listen(0,'127.0.0.1');await new Promise(ok=>server.once('listening',ok));const port=server.address().port;await new Promise(ok=>server.close(ok))
 const edge=process.env.EDGE_EXE??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
-const child=spawn(edge,['--headless=new','--autoplay-policy=no-user-gesture-required','--no-first-run','--disable-extensions','--disable-background-networking','--remote-debugging-port='+port,'--user-data-dir='+root,'about:blank'],{stdio:'ignore'})
+const child=spawn(edge,['--headless=new','--no-first-run','--disable-extensions','--disable-background-networking','--remote-debugging-port='+port,'--user-data-dir='+root,'about:blank'],{stdio:'ignore'})
 let ws,seq=0
 async function eventually(task,ms=40000){let last;const until=Date.now()+ms;while(Date.now()<until){try{const answer=await task();if(answer)return answer}catch(e){last=e}await wait(200)}console.log(await value('({messages:window.previewMessages,cards:document.querySelectorAll(".card").length,frame:document.querySelector(".thumbnail-preview iframe")?.src,preview:document.querySelector(".thumbnail-preview iframe")?.contentDocument?.documentElement.outerHTML.slice(-1500),text:document.querySelector(".content")?.textContent.slice(0,500)})').catch(()=>null));throw Error('Feature check timed out'+(last?': '+last.message:''))}
 async function pages(){return (await fetch('http://127.0.0.1:'+port+'/json/list',{signal:AbortSignal.timeout(1500)})).json()}
@@ -82,7 +82,7 @@ try {
  await leave();await eventually(()=>value('!document.querySelector(".thumbnail-preview iframe")'));report.stopsOnLeave=true;
  if(process.env.VIDDY_FULL_PLAYER){
   await value('window.playerSamples=[];window.addEventListener("message",e=>{if(e.data?.type==="viddy-player")window.playerSamples.push(e.data)})');
-  await value('document.querySelector(".content > div:not([hidden]) .card .thumbnail").click()');
+  const click=await value('(()=>{const r=document.querySelector(".content > div:not([hidden]) .card .thumbnail").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');await call('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...click});await call('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...click});
   await eventually(()=>value('document.querySelector(".player iframe")?.src.includes("/player.html")'));
   await eventually(()=>value('window.playerSamples.some(s=>s.event==="sample"&&s.sample.time>1&&s.sample.state===1)'),60000);
   await eventually(()=>value('!!window.fixture.data.history?.jNQXAC9IVRw'));

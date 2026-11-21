@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Viddy native autoplay check</title><style>html,body{margin:0;background:black;color:white;font:14px system-ui}video{width:320px;height:180px;display:block}</style></head><body><script>
+(async()=>{
+ for(const muted of [true,false]){
+  const video=document.createElement('video');video.muted=muted;video.playsInline=true;video.loop=true;video.src='autoplay-probe.mp4';document.body.replaceChildren(video);
+  const phase=muted?'muted':'audio';let reported=false;
+  const send=(played,error)=>{if(reported)return;reported=true;parent.postMessage({type:'viddy-autoplay-probe',phase,played,error},'*')};
+  try{
+   await video.play();await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Playback time did not advance')),6000);video.addEventListener('timeupdate',()=>{if(video.currentTime>.5){clearTimeout(timer);resolve()}},{passive:true})});send(true);video.pause();
+  }catch(error){send(false,String(error?.name??error));video.pause()}
+ }
+})();
+</script></body></html>

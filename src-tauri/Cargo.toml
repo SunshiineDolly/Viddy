@@ -1,6 +1,6 @@
 [package]
 name = "puretube"
-version = "0.26.7"
+version = "0.26.8"
 edition = "2021"
 description = "A quiet desktop for YouTube"
 

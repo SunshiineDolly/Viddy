@@ -2,11 +2,24 @@
 (() => {
  const parameters=new URLSearchParams(location.hash.slice(1)),id=parameters.get('id'),preview=parameters.get('mode')==='preview',nonce=parameters.get('nonce');
  if(!/^[\w-]{11}$/.test(id??'')){document.body.textContent='Open a video in Viddy to play it here.';return}
- let player,ready=false;
+ const autoStart=preview||parameters.get('autoplay')!=='0';
+ let player,ready=false,startAttempts=0,startTimer,playing=false,failed=false;
+ function start(){
+  if(!ready||!autoStart||playing||failed||startAttempts>=3)return;
+  startAttempts++;if(preview)player.mute();startTimer=setTimeout(blocked,1500);player.playVideo();
+ }
+ function blocked(){
+  if(!autoStart||playing||failed)return;
+  clearTimeout(startTimer);
+  if(!ready)return;
+  if(startAttempts<3)startTimer=setTimeout(start,300*startAttempts);
+  else startTimer=setTimeout(()=>{if(!playing&&!failed)send(preview?'blocked':'autoplay-blocked')},500);
+ }
+ addEventListener('pagehide',()=>{clearTimeout(startTimer)});
  function send(event,value,sample){parent.postMessage(preview?{type:'viddy-video-preview',id,state:event,code:value}:{type:'viddy-player',nonce,event,value,sample},'*')}
  function sample(){if(!ready||preview)return;send('sample',null,{time:player.getCurrentTime(),duration:player.getDuration(),state:player.getPlayerState(),volume:player.getVolume(),muted:player.isMuted(),url:player.getVideoUrl()})}
- const frame=document.createElement('iframe');frame.title=preview?'Muted YouTube video preview':'YouTube video player';frame.allow='autoplay; encrypted-media; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.referrerPolicy='strict-origin-when-cross-origin';
- const query=new URLSearchParams({autoplay:preview||parameters.get('autoplay')!=='0'?'1':'0',controls:preview?'0':'1',mute:preview?'1':'0',playsinline:'1',rel:'0',enablejsapi:'1',origin:location.origin,widget_referrer:'https://app.puretube.desktop/'});
+ const frame=document.createElement('iframe');frame.title=preview?'Muted YouTube video preview':'YouTube video player';frame.allow='autoplay *; encrypted-media *; fullscreen *; picture-in-picture *';frame.allowFullscreen=true;frame.referrerPolicy='strict-origin-when-cross-origin';
+ const query=new URLSearchParams({autoplay:'0',controls:preview?'0':'1',mute:preview?'1':'0',playsinline:'1',rel:'0',enablejsapi:'1',origin:location.origin,widget_referrer:'https://app.puretube.desktop/'});
  frame.src='https://www.youtube.com/embed/'+id+'?'+query;document.body.appendChild(frame);
  addEventListener('message',event=>{
   const d=event.data;if(preview||event.source!==parent||d?.type!=='viddy-player-command'||d.nonce!==nonce||!ready||!Array.isArray(d.args))return;
@@ -17,9 +30,9 @@
   sample();
  });
  window.onYouTubeIframeAPIReady=function(){player=window.viddyPreviewPlayer=new YT.Player(frame,{events:{
-  onReady:e=>{ready=true;if(preview){e.target.mute();e.target.playVideo()}sample();send('ready')},
-  onStateChange:e=>{sample();if(preview){if(e.data===1)send('playing');if(e.data===0)send('ended')}else send('state',e.data)},
-  onError:e=>send('error',e.data),onAutoplayBlocked:()=>send(preview?'blocked':'autoplay-blocked')
+  onReady:e=>{ready=true;sample();send('ready');start()},
+  onStateChange:e=>{if(e.data===1){playing=true;clearTimeout(startTimer)}sample();if(preview){if(e.data===1)send('playing');if(e.data===0)send('ended')}else send('state',e.data)},
+  onError:e=>{failed=true;clearTimeout(startTimer);send('error',e.data)},onAutoplayBlocked:blocked
  }})};
  const script=document.createElement('script');script.src='https://www.youtube.com/iframe_api';script.onerror=()=>send('error',0);document.body.appendChild(script);setInterval(sample,250);
 })();

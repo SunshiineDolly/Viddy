@@ -65,6 +65,7 @@ jobs:
               if report.get('restartVerified'): break
               time.sleep(.2)
           assert report.get('restartVerified') and report.get('previewsCanBeDisabled') and report.get('mainPlayerReady'), report
+          assert report.get('nativeMutedAutoplay') and report.get('nativeAudioAutoplay'), report
           assert any(s.get('state') == 'ready' for s in report.get('states', [])), report
           if report.get('externalPlaybackBlockedByYouTube'):
               print('::warning::YouTube bot verification blocked live playback on this runner; native player loading, preference and restart passed. Real Mac playback remains unverified.')

@@ -44,7 +44,7 @@ export function PlayerFrame({id,start,live=false,onSample,onPlay,onElapsed,onEnd
    frame.dataset.videoId=id
    frame.dataset.start=String(initial.current)
    frame.dataset.autoplay=roomTarget.current?.playing===false?'0':'1'
-   frame.allow='autoplay; encrypted-media; fullscreen; picture-in-picture'
+   frame.allow=isMac?'autoplay *; encrypted-media *; fullscreen *; picture-in-picture *':'autoplay; encrypted-media; fullscreen; picture-in-picture'
    frame.allowFullscreen=true
    const params=new URLSearchParams({autoplay:roomTarget.current?.playing===false?'0':'1',controls:'1',enablejsapi:'1',origin:location.origin,rel:'0',playsinline:'1'})
    if(!live&&initial.current>0)params.set('start',String(Math.floor(initial.current)))

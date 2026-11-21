@@ -12,7 +12,10 @@
   }
   const native = window.__TAURI_INTERNALS__.invoke.bind(window.__TAURI_INTERNALS__);
   const report={engine:'native macOS WKWebView',videoTimeAdvanced:false,platform:navigator.platform,hover:matchMedia('(hover:hover)').matches,reducedMotion:matchMedia('(prefers-reduced-motion:reduce)').matches,states:[],errors:[]};
-  let first,done=false,checkingToggle=false;
+  let first,done=false,checkingToggle=false,probe;
+  function checkAutoplay(){
+    if(probe)return;probe=document.createElement('iframe');probe.allow='autoplay *';probe.style='position:fixed;right:0;top:0;width:320px;height:180px;z-index:99999;border:0';probe.src='https://sunshiinedolly.github.io/Viddy/autoplay-check.html';document.body.appendChild(probe);
+  }
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   async function checkToggle(){
     if(checkingToggle)return;checkingToggle=true;
@@ -29,7 +32,8 @@
   addEventListener('error',e=>report.errors.push(e.message));
   addEventListener('securitypolicyviolation',e=>report.errors.push('CSP '+e.violatedDirective+' '+e.blockedURI));
   addEventListener('message',e=>{
-    if(e.data?.type==='viddy-player'&&e.data.event==='ready'){report.mainPlayerReady=true;report.mainPlayerFrame=document.querySelector('.player iframe')?.src;setTimeout(finish,1500)}
+    if(e.source===probe?.contentWindow&&e.data?.type==='viddy-autoplay-probe'){report[e.data.phase==='muted'?'nativeMutedAutoplay':'nativeAudioAutoplay']=!!e.data.played;if(e.data.error)report.errors.push(e.data.phase+': '+e.data.error);if(e.data.phase==='audio')finish()}
+    if(e.data?.type==='viddy-player'&&e.data.event==='ready'){report.mainPlayerReady=true;report.mainPlayerFrame=document.querySelector('.player iframe')?.src;setTimeout(checkAutoplay,500)}
     if(e.data?.type==='viddy-player'&&e.data.event==='error')report.mainPlayerError=e.data.value;
     if(e.data?.type==='viddy-video-preview'){report.states.push({state:e.data.state,code:e.data.code});if(e.data.state==='error'||e.data.state==='blocked'){e.stopImmediatePropagation();report.playerRejected=true;setTimeout(()=>{if(report.playerText?.includes('Sign in to confirm')&&report.playerText?.includes('not a bot')){report.externalPlaybackBlockedByYouTube=true;void checkToggle()}else finish()},3500)}}
     if(e.data?.type==='viddy-native-page'){report.playerText=e.data.text;report.playerStatus=e.data.status};
