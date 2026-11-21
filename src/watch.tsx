@@ -1,3 +1,4 @@
+import {isMac} from './platform'
 import {PlaylistSaver} from './playlist-saver'
 import {PlaylistPlayer,type PlaylistQueue} from './playlist-queue'
 import {useEffect,useRef,useState} from 'react'
@@ -40,6 +41,11 @@ export function Watch({onOpenRoom,roomPlayback,inRoom,onRoomController,playlist,
    catch(e){setMessage(errorText(e))}
    finally{setOpening(false)}
  }
+ useEffect(()=>{
+   if(isMac||!restricted||docked||popped||inRoom||openedFallback.current||!visible(video,data.settings))return
+   openedFallback.current=true
+   void original()
+ },[restricted,docked,popped,inRoom])
  if(!visible(video,data.settings))return <Empty title="Video hidden" detail="This video matches one of your content filters."/>
  if(data.settings.blocked.length&&!video.channelId){
    return <Empty title={checked.loading?'Checking content filters':'Creator could not be verified'} detail="Viddy checks the creator when channel filters are active."/>

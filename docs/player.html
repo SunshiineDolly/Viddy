@@ -6,7 +6,7 @@
  function send(event,value,sample){parent.postMessage(preview?{type:'viddy-video-preview',id,state:event,code:value}:{type:'viddy-player',nonce,event,value,sample},'*')}
  function sample(){if(!ready||preview)return;send('sample',null,{time:player.getCurrentTime(),duration:player.getDuration(),state:player.getPlayerState(),volume:player.getVolume(),muted:player.isMuted(),url:player.getVideoUrl()})}
  const frame=document.createElement('iframe');frame.title=preview?'Muted YouTube video preview':'YouTube video player';frame.allow='autoplay; encrypted-media; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.referrerPolicy='strict-origin-when-cross-origin';
- const query=new URLSearchParams({autoplay:'1',controls:preview?'0':'1',mute:preview?'1':'0',playsinline:'1',rel:'0',enablejsapi:'1',origin:location.origin,widget_referrer:'https://app.puretube.desktop/'});
+ const query=new URLSearchParams({autoplay:preview||parameters.get('autoplay')!=='0'?'1':'0',controls:preview?'0':'1',mute:preview?'1':'0',playsinline:'1',rel:'0',enablejsapi:'1',origin:location.origin,widget_referrer:'https://app.puretube.desktop/'});
  frame.src='https://www.youtube.com/embed/'+id+'?'+query;document.body.appendChild(frame);
  addEventListener('message',event=>{
   const d=event.data;if(preview||event.source!==parent||d?.type!=='viddy-player-command'||d.nonce!==nonce||!ready||!Array.isArray(d.args))return;

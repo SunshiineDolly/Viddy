@@ -40,7 +40,7 @@ subjectKeyIdentifier=hash
   $secure=(Get-Content -LiteralPath $passwordFile -Raw).Trim()|ConvertTo-SecureString
   $env:VIDDY_CERT_PASSWORD=[Net.NetworkCredential]::new('',$secure).Password
  }
- if($RepackForMac){
+ if($RepackForMac -or (Test-Path -LiteralPath (Join-Path $PrivateRoot 'viddy-macos-compatible.p12'))){
   $compatible=Join-Path $PrivateRoot 'viddy-macos-compatible.p12'
   if(!(Test-Path -LiteralPath $compatible)){
    & $openssl pkcs12 -export -inkey $key -in $cert -name 'Viddy Mac Release Identity' -out $compatible -passin env:VIDDY_CERT_PASSWORD -passout env:VIDDY_CERT_PASSWORD -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1

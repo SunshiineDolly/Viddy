@@ -23,7 +23,7 @@ export class MacPlayer {
   const id=frame.dataset.videoId!
   void macYouTubePlayerUrl(id,'watch').then(address=>{
    if(!this.alive)return
-   const url=new URL(address);const params=new URLSearchParams(url.hash.slice(1));params.set('nonce',this.nonce);url.hash=params.toString();this.origin=url.origin;frame.src=url.href
+   const url=new URL(address);const params=new URLSearchParams(url.hash.slice(1));params.set('nonce',this.nonce);params.set('autoplay',frame.dataset.autoplay??'1');url.hash=params.toString();this.origin=url.origin;frame.src=url.href
   }).catch(()=>{if(this.alive)events.onError({data:0})})
  }
  private command(method:string,args:unknown[]=[]){this.frame.contentWindow?.postMessage({type:'viddy-player-command',nonce:this.nonce,method,args},this.origin)}
