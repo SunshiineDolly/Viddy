@@ -22,12 +22,11 @@ export async function configureYouTubeFrame(frame: HTMLIFrameElement, id: string
  }
 }
 
-export async function macYouTubePreviewUrl(id:string){
- if(!/^[\w-]{11}$/.test(id))throw Error('Invalid preview video.')
- embedPort??=invoke<number>('youtube_embed_port').catch(error=>{embedPort=undefined;throw error})
- const port=await embedPort
- if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid preview player address.')
- const url=new URL('http://127.0.0.1:'+port+'/preview')
- url.searchParams.set('id',id)
+export async function macYouTubePlayerUrl(id:string,mode:'preview'|'watch'){
+ if(!/^[\w-]{11}$/.test(id))throw Error('Invalid player video.')
+ const address=await invoke<string>('youtube_player_url',{id,mode})
+ const url=new URL(address)
+ if(url.protocol!=='https:'&&!(url.protocol==='http:'&&url.hostname==='127.0.0.1'))throw Error('Invalid player address.')
  return url.href
 }
+export const macYouTubePreviewUrl=(id:string)=>macYouTubePlayerUrl(id,'preview')

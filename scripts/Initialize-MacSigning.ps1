@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$PrivateRoot=(Join-Path $env:LOCALAPPDATA 'Viddy/signing/macos'))
+param([string]$PrivateRoot=(Join-Path $env:LOCALAPPDATA 'Viddy/signing/macos'),[switch]$RepackForMac)
 $ErrorActionPreference='Stop'
 $openssl='C:/Program Files/Git/usr/bin/openssl.exe'
 $repo=Split-Path $PSScriptRoot -Parent
@@ -37,8 +37,16 @@ subjectKeyIdentifier=hash
   & $openssl pkcs12 -export -inkey $key -in $cert -name 'Viddy Mac Release Identity' -out $p12 -passin env:VIDDY_CERT_PASSWORD -passout env:VIDDY_CERT_PASSWORD
   if($LASTEXITCODE){throw 'Could not prepare the encrypted signing identity.'}
  } else {
-  $secure=Get-Content -LiteralPath $passwordFile -Raw|ConvertTo-SecureString
+  $secure=(Get-Content -LiteralPath $passwordFile -Raw).Trim()|ConvertTo-SecureString
   $env:VIDDY_CERT_PASSWORD=[Net.NetworkCredential]::new('',$secure).Password
+ }
+ if($RepackForMac){
+  $compatible=Join-Path $PrivateRoot 'viddy-macos-compatible.p12'
+  if(!(Test-Path -LiteralPath $compatible)){
+   & $openssl pkcs12 -export -inkey $key -in $cert -name 'Viddy Mac Release Identity' -out $compatible -passin env:VIDDY_CERT_PASSWORD -passout env:VIDDY_CERT_PASSWORD -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+   if($LASTEXITCODE){throw 'Could not package the existing identity for Apple Keychain.'}
+  }
+  $p12=$compatible
  }
  $lines="protocol=https`nhost=github.com`nusername=SunshiineDolly`n`n"|& git.exe -c credential.interactive=never credential fill
  if($LASTEXITCODE){throw 'Existing GitHub sign-in unavailable.'}

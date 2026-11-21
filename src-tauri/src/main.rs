@@ -271,6 +271,8 @@ fn main() {
         comments::video_comments,
         #[cfg(target_os = "macos")]
         youtube_embed::youtube_embed_port,
+        #[cfg(target_os = "macos")]
+        youtube_embed::youtube_player_url,
         account::account_configured,
         account::account_start,
         library_profile,
@@ -434,6 +436,7 @@ fn main() {
                         | "channel_videos"
                         | "watch_creator"
                         | "youtube_embed_port"
+                        | "youtube_player_url"
                 );
             if invoke.message.webview_ref().label() != "main" && !mini {
                 invoke

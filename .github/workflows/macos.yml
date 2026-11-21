@@ -37,6 +37,20 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: cargo test --release --locked --target aarch64-apple-darwin --manifest-path src-tauri/Cargo.toml
+      - name: Verify published HTTPS player matches this source
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, time, urllib.request, os
+          expected = hashlib.sha256(pathlib.Path('docs/player.html').read_bytes()).digest()
+          for attempt in range(24):
+              try:
+                  url = 'https://sunshiinedolly.github.io/Viddy/player.html?build=' + os.environ['GITHUB_SHA']
+                  response = urllib.request.urlopen(url, timeout=15)
+                  if hashlib.sha256(response.read()).digest() == expected: break
+              except Exception: pass
+              time.sleep(5)
+          else: raise RuntimeError('The published HTTPS player does not match this source')
+          PY
       - name: Verify native Mac preview loading, controls and restart
         env:
           PURETUBE_ISOLATED_PROFILE: ${{ runner.temp }}/viddy-preview-check

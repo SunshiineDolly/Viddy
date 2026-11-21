@@ -1,4 +1,4 @@
-import {macYouTubePreviewUrl} from './youtube-embed'
+import {macYouTubePlayerUrl} from './youtube-embed'
 
 type Events={onReady:()=>void;onError:(e:{data:number})=>void;onStateChange:(e:{data:number})=>void}
 // The YouTube API runs inside the HTTP document, rather than the app's custom origin.
@@ -21,9 +21,9 @@ export class MacPlayer {
   }
   window.addEventListener('message',this.receive)
   const id=frame.dataset.videoId!
-  void macYouTubePreviewUrl(id).then(address=>{
+  void macYouTubePlayerUrl(id,'watch').then(address=>{
    if(!this.alive)return
-   const url=new URL(address);url.pathname='/player';url.hash=this.nonce;this.origin=url.origin;frame.src=url.href
+   const url=new URL(address);const params=new URLSearchParams(url.hash.slice(1));params.set('nonce',this.nonce);url.hash=params.toString();this.origin=url.origin;frame.src=url.href
   }).catch(()=>{if(this.alive)events.onError({data:0})})
  }
  private command(method:string,args:unknown[]=[]){this.frame.contentWindow?.postMessage({type:'viddy-player-command',nonce:this.nonce,method,args},this.origin)}

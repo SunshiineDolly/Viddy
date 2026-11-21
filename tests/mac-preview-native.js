@@ -3,7 +3,7 @@
   if (window !== window.top) {
     addEventListener('securitypolicyviolation',e=>top.postMessage({type:'viddy-native-error',error:'CSP '+e.violatedDirective+' '+e.blockedURI},'*'));
     addEventListener('error',e=>top.postMessage({type:'viddy-native-error',error:e.message},'*'));
-    if (location.hostname === '127.0.0.1') setInterval(() => {
+    if ((location.hostname === '127.0.0.1'||location.hostname==='sunshiinedolly.github.io')) setInterval(() => {
       const player = window.viddyPreviewPlayer;
       if (player?.getCurrentTime) parent.postMessage({type:'viddy-native-time',time:player.getCurrentTime()}, '*');
     }, 500);

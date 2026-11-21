@@ -30,7 +30,7 @@ fn main() {
     let mut context = tauri::generate_context!();
     context.config_mut().identifier = "app.viddy.native-preview-check".into();
     for config in &mut context.config_mut().app.windows { config.create = false; }
-    let commands: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![youtube_embed::youtube_embed_port, preview_check_result];
+    let commands: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![youtube_embed::youtube_embed_port, youtube_embed::youtube_player_url, preview_check_result];
     tauri::Builder::default()
         .setup(move |app| {
             app.manage(youtube_embed::EmbedOrigin::default());
@@ -42,7 +42,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(move |invoke| {
-            if matches!(invoke.message.command(), "youtube_embed_port" | "preview_check_result") { return commands(invoke); }
+            if matches!(invoke.message.command(), "youtube_embed_port" | "youtube_player_url" | "preview_check_result") { return commands(invoke); }
             let answer = match invoke.message.command() {
                 "load" => serde_json::json!({"version":1,"settings":{"intro":false,"tray":false,"themedCursor":false}}),
                 "public_feed" => serde_json::json!("<?xml version=\"1.0\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"/>"),
