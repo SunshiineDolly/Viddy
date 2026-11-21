@@ -28,11 +28,16 @@ for version in ("1.0.0", "1.0.1"):
 assert requirements[0] and requirements[0] == requirements[1], requirements
 assert hashes[0] != hashes[1], hashes
 service = "Viddy.Signing.Test." + root.name
+installed = root / "Viddy.app"
+shutil.copytree(apps[0].parents[2], installed)
+installed_binary = installed / "Contents" / "MacOS" / "check"
 try:
-    subprocess.run([str(apps[0]), "write", service], check=True, timeout=20)
-    subprocess.run([str(apps[1]), "read", service], check=True, timeout=20)
+    subprocess.run([str(installed_binary), "write", service], check=True, timeout=20)
+    installed.rename(root / "previous.app")
+    shutil.copytree(apps[1].parents[2], installed)
+    subprocess.run([str(installed_binary), "read", service], check=True, timeout=20)
 finally:
-    subprocess.run([str(apps[1]), "delete", service], timeout=20)
+    subprocess.run([str(installed_binary), "delete", service], timeout=20)
 report = {"stableDesignatedRequirement": True, "differentUpdateHashes": True, "keychainAccessibleAfterUpdateWithoutPrompt": True, "productionCredentialsTouched": False}
 (Path(os.environ["RUNNER_TEMP"]) / "viddy-signing-report.json").write_text(json.dumps(report, indent=2))
 print(json.dumps(report))
