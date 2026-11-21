@@ -100,6 +100,7 @@ jobs:
           security import "$RUNNER_TEMP/viddy-signing.p12" -P "$VIDDY_MAC_CERTIFICATE_PASSWORD" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$VIDDY_MAC_CERTIFICATE_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
           security list-keychains -d user -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
           sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$KEYCHAIN_PATH" src-tauri/macos/signing-certificate.pem
           identity="$(openssl x509 -in src-tauri/macos/signing-certificate.pem -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')"
           echo "VIDDY_MAC_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
@@ -177,5 +178,7 @@ jobs:
           retention-days: 30
       - name: Remove temporary signing keychain
         if: always() && github.event_name != 'pull_request'
-        run: security delete-keychain "$RUNNER_TEMP/viddy-signing.keychain-db" || true
+        run: |
+          security default-keychain -d user -s "$HOME/Library/Keychains/login.keychain-db" || true
+          security delete-keychain "$RUNNER_TEMP/viddy-signing.keychain-db" || true
 

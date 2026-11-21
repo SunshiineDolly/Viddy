@@ -33,6 +33,7 @@ shutil.copytree(apps[0].parents[2], installed)
 installed_binary = installed / "Contents" / "MacOS" / "check"
 try:
     subprocess.run([str(installed_binary), "write", service], check=True, timeout=20)
+    subprocess.run([str(installed_binary), "read", service], check=True, timeout=20)
     installed.rename(root / "previous.app")
     shutil.copytree(apps[1].parents[2], installed)
     subprocess.run([str(installed_binary), "read", service], check=True, timeout=20)
