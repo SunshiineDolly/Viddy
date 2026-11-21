@@ -32,21 +32,26 @@ installed = root / "Viddy.app"
 shutil.copytree(apps[0].parents[2], installed)
 installed_binary = installed / "Contents" / "MacOS" / "check"
 # The distributed self-signed certificate is not a trusted root on users' Macs.
-# Remove the CI-only signing trust while testing access, then restore it solely
-# for the production build. This catches requirements that depend on local trust.
+# Explicitly deny the CI-only signing trust while testing access, then restore it
+# solely for the production build. This catches reliance on a trusted root.
 certificate = "src-tauri/macos/signing-certificate.pem"
-subprocess.run(["sudo", "security", "remove-trusted-cert", "-d", certificate], check=True)
+print("Testing Keychain access without certificate trust", flush=True)
+subprocess.run(["sudo", "security", "add-trusted-cert", "-d", "-r", "deny", "-p", "codeSign", "-k", os.path.join(os.environ["RUNNER_TEMP"], "viddy-signing.keychain-db"), certificate], check=True, timeout=30)
+print("CI signing trust disabled", flush=True)
 try:
+    print("Migrating synthetic legacy session", flush=True)
     subprocess.run([str(installed_binary), "write", service], check=True, timeout=20)
     subprocess.run([str(installed_binary), "read", service], check=True, timeout=20)
+    print("Installing second signed version", flush=True)
     installed.rename(root / "previous.app")
     shutil.copytree(apps[1].parents[2], installed)
     subprocess.run([str(installed_binary), "read", service], check=True, timeout=20)
 finally:
     try:
+        print("Verifying logout cannot restore the legacy session", flush=True)
         subprocess.run([str(installed_binary), "delete", service], timeout=20, check=True)
     finally:
-        subprocess.run(["sudo", "security", "add-trusted-cert", "-d", "-r", "trustRoot", "-p", "codeSign", "-k", os.path.join(os.environ["RUNNER_TEMP"], "viddy-signing.keychain-db"), certificate], check=True)
+        subprocess.run(["sudo", "security", "add-trusted-cert", "-d", "-r", "trustRoot", "-p", "codeSign", "-k", os.path.join(os.environ["RUNNER_TEMP"], "viddy-signing.keychain-db"), certificate], check=True, timeout=30)
 report = {"stableDesignatedRequirement": True, "differentUpdateHashes": True, "keychainAccessibleAfterUpdateWithoutPrompt": True, "legacySessionMigrated": True, "logoutBlocksLegacyRestore": True, "hardenedRuntime": True, "certificateTrustNotRequiredForKeychain": True, "productionCredentialsTouched": False}
 (Path(os.environ["RUNNER_TEMP"]) / "viddy-signing-report.json").write_text(json.dumps(report, indent=2))
 print(json.dumps(report))
