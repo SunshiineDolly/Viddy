@@ -51,32 +51,6 @@ jobs:
               time.sleep(5)
           else: raise RuntimeError('The published HTTPS player does not match this source')
           PY
-      - name: Verify native Mac preview loading, controls and restart
-        env:
-          PURETUBE_ISOLATED_PROFILE: ${{ runner.temp }}/viddy-preview-check
-          VIDDY_PREVIEW_REPORT: ${{ runner.temp }}/viddy-preview-report.json
-        run: |
-          cargo build --release --locked --target aarch64-apple-darwin --manifest-path src-tauri/Cargo.toml --example mac-preview-check --features tauri/custom-protocol
-          python3 - <<'PY'
-          import subprocess, json, os, time
-          subprocess.run(['src-tauri/target/aarch64-apple-darwin/release/examples/mac-preview-check'], timeout=240, check=True)
-          for _ in range(100):
-              with open(os.environ['VIDDY_PREVIEW_REPORT']) as f: report = json.load(f)
-              if report.get('restartVerified'): break
-              time.sleep(.2)
-          assert report.get('restartVerified') and report.get('previewsCanBeDisabled') and report.get('mainPlayerReady'), report
-          assert report.get('nativeMutedAutoplay') and report.get('nativeAudioAutoplay'), report
-          assert any(s.get('state') == 'ready' for s in report.get('states', [])), report
-          assert report.get('videoTimeAdvanced') and report.get('previewMuted') and report.get('stopsOnLeave'), report
-          assert report.get('sourceIsHTTPSGoogleVideo') and report.get('decodedFrames', 0) > 0, report
-          print(json.dumps(report, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Viddy-native-preview-report
-          path: ${{ runner.temp }}/viddy-preview-report.json
-          if-no-files-found: ignore
       - name: Import stable Viddy release identity
         timeout-minutes: 3
         if: github.event_name != 'pull_request'
@@ -175,6 +149,32 @@ jobs:
           path: mac-download/
           if-no-files-found: error
           retention-days: 30
+      - name: Verify native Mac preview loading, controls and restart
+        env:
+          PURETUBE_ISOLATED_PROFILE: ${{ runner.temp }}/viddy-preview-check
+          VIDDY_PREVIEW_REPORT: ${{ runner.temp }}/viddy-preview-report.json
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin --manifest-path src-tauri/Cargo.toml --example mac-preview-check --features tauri/custom-protocol
+          python3 - <<'PY'
+          import subprocess, json, os, time
+          subprocess.run(['src-tauri/target/aarch64-apple-darwin/release/examples/mac-preview-check'], timeout=240, check=True)
+          for _ in range(100):
+              with open(os.environ['VIDDY_PREVIEW_REPORT']) as f: report = json.load(f)
+              if report.get('restartVerified'): break
+              time.sleep(.2)
+          assert report.get('restartVerified') and report.get('previewsCanBeDisabled') and report.get('mainPlayerReady'), report
+          assert report.get('nativeMutedAutoplay') and report.get('nativeAudioAutoplay'), report
+          assert any(s.get('state') == 'ready' for s in report.get('states', [])), report
+          assert report.get('videoTimeAdvanced') and report.get('previewMuted') and report.get('stopsOnLeave'), report
+          assert report.get('sourceIsHTTPSGoogleVideo') and report.get('decodedFrames', 0) > 0, report
+          print(json.dumps(report, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Viddy-native-preview-report
+          path: ${{ runner.temp }}/viddy-preview-report.json
+          if-no-files-found: ignore
       - name: Remove temporary signing keychain
         if: always() && github.event_name != 'pull_request'
         run: |
