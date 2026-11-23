@@ -1,9 +1,21 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {moveQueue,removeQueue} from '../src/queue-edit.ts'
+import {moveQueue,removeQueue,selectQueueVideo} from '../src/queue-edit.ts'
 import {mixLive} from '../src/live-mix.ts'
 import {makeSources} from '../src/live-sources.ts'
 import type {Video} from '../src/domain.ts'
+
+test('opening queued or unrelated videos retains the queue, repeat and remaining order',()=>{
+ const original={name:'Saved playlist',ids:['a','b','c'],index:0,repeat:true}
+ const selected=selectQueueVideo(original,'b')!
+ assert.deepEqual(selected,{...original,index:1})
+ const inserted=selectQueueVideo(selected,'new')!
+ assert.deepEqual(inserted,{name:'Queue',ids:['a','b','new','c'],index:2,repeat:true})
+ assert.deepEqual(original.ids,['a','b','c'])
+ assert.equal(selectQueueVideo(inserted,'new'),inserted)
+ assert.equal(selectQueueVideo(undefined,'new'),undefined)
+ assert.deepEqual(selectQueueVideo({...original,index:2},'new')?.ids,['a','b','c','new'])
+})
 test('queue edits retain the playing item and choose a neighbor when it is removed',()=>{
  const q={name:'Queue',ids:['a','b','c'],index:1,repeat:false}
  const moved=moveQueue(q,0,2);assert.deepEqual(moved.ids,['b','c','a']);assert.equal(moved.index,0)

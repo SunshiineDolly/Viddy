@@ -18,11 +18,10 @@ import {Empty,day} from './components'
 import {Notice,type Shared} from './screens'
 import {rememberVideo,toggled} from './library'
 import {errorText,visible,type Video} from './domain'
-type Props={onOpenRoom:()=>void;roomPlayback?:RoomPlayback;inRoom:boolean;onRoomController:(read:()=>RoomPlayback|undefined)=>void;playlist?:PlaylistQueue;onQueueChange:(queue:PlaylistQueue|undefined)=>void;onQueueWatch:(index:number)=>void;onQueueClose:()=>void;onQueueRepeat:()=>void;docked?:boolean;onRestore:()=>void;onStop:()=>void;video:Video;shared:Shared;theater:boolean;setTheater:(v:boolean)=>void;onSample:(id:string,p:number,d:number,t:number,live?:boolean)=>void;onElapsed:(seconds:number)=>void;popped:boolean;returned?:number;onPopout:(video:Video,start:number)=>Promise<void>}
-export function Watch({onOpenRoom,roomPlayback,inRoom,onRoomController,playlist,onQueueChange,onQueueWatch,onQueueClose,onQueueRepeat,docked=false,onRestore,onStop,video:v,shared,theater,setTheater,onSample,onElapsed,popped,returned,onPopout}:Props){
+type Props={showQueue:boolean;setShowQueue:(show:boolean)=>void;onOpenRoom:()=>void;roomPlayback?:RoomPlayback;inRoom:boolean;onRoomController:(read:()=>RoomPlayback|undefined)=>void;playlist?:PlaylistQueue;onQueueChange:(queue:PlaylistQueue|undefined)=>void;onQueueWatch:(index:number)=>void;onQueueClose:()=>void;onQueueRepeat:()=>void;docked?:boolean;onRestore:()=>void;onStop:()=>void;video:Video;shared:Shared;theater:boolean;setTheater:(v:boolean)=>void;onSample:(id:string,p:number,d:number,t:number,live?:boolean)=>void;onElapsed:(seconds:number)=>void;popped:boolean;returned?:number;onPopout:(video:Video,start:number)=>Promise<void>}
+export function Watch({showQueue,setShowQueue,onOpenRoom,roomPlayback,inRoom,onRoomController,playlist,onQueueChange,onQueueWatch,onQueueClose,onQueueRepeat,docked=false,onRestore,onStop,video:v,shared,theater,setTheater,onSample,onElapsed,popped,returned,onPopout}:Props){
  const {data,change,follow,channel}=shared
  const [share,setShare]=useState(false),[message,setMessage]=useState(''),[ended,setEnded]=useState(false),[restricted,setRestricted]=useState(false),[opening,setOpening]=useState(false)
- const [showQueue,setShowQueue]=useState(false)
  useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(''),2600);return()=>clearTimeout(timer)},[message])
  const playerPosition=useRef<()=>number>(()=>0)
  const scheduledAt=data.liveReminders[v.id]?.at??v.scheduledAt

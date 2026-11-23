@@ -115,7 +115,12 @@ pub fn player_video(app: tauri::AppHandle, state: State<PlayerState>, video: Val
             if let Some(index) = ids.iter().position(|id| id == &video["id"]) {
                 payload["playlist"]["index"] = json!(index)
             } else {
-                payload["playlist"] = Value::Null
+                let mut queue = payload["playlist"].clone();
+                let at = (queue["index"].as_u64().unwrap_or(0) as usize + 1).min(ids.len());
+                queue["ids"].as_array_mut().unwrap().insert(at, video["id"].clone());
+                queue["index"] = json!(at);
+                queue["name"] = json!("Queue");
+                payload["playlist"] = queue;
             }
         }
     }
@@ -189,6 +194,8 @@ pub fn player_queue(
         return Err("Invalid queue.".into());
     }
     state.0.lock().map_err(|_| "Player is busy.")?["playlist"] = queue.clone();
+    app.emit_to("player", "player-queue", queue.clone())
+        .map_err(|_| "Could not update queue.".to_string())?;
     app.emit_to("main", "player-queue", queue)
         .map_err(|_| "Could not update queue.".into())
 }

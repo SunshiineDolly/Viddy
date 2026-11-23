@@ -1,3 +1,4 @@
+import {selectQueueVideo} from './queue-edit'
 import {UpdateNotice} from './update-notice'
 import {VideoPreviews} from './thumbnail'
 import {BrandIntro} from './brand-intro'
@@ -72,6 +73,7 @@ function App() {
  const handledUpdateSettingsRequest=useRef(0)
  const [text,setText]=useState('')
  const [activeVideo,setActiveVideo]=useState<Video>(),[playbackRun,setPlaybackRun]=useState(0)
+ const [showQueue,setShowQueue]=useState(false)
  const [playlist,setPlaylist]=useState<PlaylistQueue>();const playlistRef=useRef(playlist);playlistRef.current=playlist
  const [floating,setFloating]=useState<{video:Video;start:number}|null>(null),[returned,setReturned]=useState<{id:string;start:number}>()
  const [theater,setTheater]=useState(false),[session]=useState(createSessionCounter)
@@ -87,7 +89,7 @@ function App() {
  }
  const watchRoom=useWatchTogether(getRoomPlayback,activeVideo?.id,id=>{
    const video=data.savedVideos[id]??linkVideo(id)
-   setPlaylist(undefined)
+   setPlaylist(q=>selectQueueVideo(q,id))
    if(floating)void invoke('close_player').catch(()=>{})
    setActiveVideo(video)
    go({name:'watch',video})
@@ -117,11 +119,12 @@ function App() {
    }
  },[updateSettingsRequest,route])
  function go(next:Route) {
-   if(next.name==='watch'&&route.name==='watch'&&next.video.id===route.video.id)return
+   if(next.name==='watch'&&route.name==='watch'&&next.video.id===route.video.id&&activeVideo?.id===next.video.id)return
    if(next.name==='channel'&&route.name==='channel'&&next.id===route.id)return
    if(next.name===route.name&&next.name!=='search'&&next.name!=='watch'&&next.name!=='channel')return
-   if(next.name==='watch')setActiveVideo(next.video)
+   if(next.name==='watch'){setActiveVideo(next.video);setPlaylist(q=>selectQueueVideo(q,next.video.id))}
    if(next.name==='watch')void invoke('close_original_player').catch(()=>{})
+   if(next.name!=='watch'&&route.name==='watch'&&playlistRef.current)setShowQueue(true)
    setText('')
    routes.current.push({route,text:route.name==='search'?route.query:text,scroll:main.current?.scrollTop??0})
    restoreScroll.current=0
@@ -129,7 +132,8 @@ function App() {
  }
  function back() {
    const entry=routes.current.pop()
-   if(entry?.route.name==='watch'){setActiveVideo(entry.route.video);const id=entry.route.video.id;setPlaylist(q=>q?.ids.includes(id)?{...q,index:q.ids.indexOf(id)}:undefined)}
+   if(route.name==='watch'&&entry?.route.name!=='watch'&&playlistRef.current)setShowQueue(true)
+   if(entry?.route.name==='watch'){setActiveVideo(entry.route.video);const id=entry.route.video.id;setPlaylist(q=>selectQueueVideo(q,id))}
    restoreScroll.current=entry?.scroll??0
    setRoute(entry?.route??{name:'home'});setText('');setTheater(false);setNotice('')
  }
@@ -139,7 +143,6 @@ function App() {
  }
  function queueWatch(index:number){const q=playlistRef.current;if(!q?.ids[index])return;setPlaybackRun(n=>n+1);setReturned(undefined);setPlaylist({...q,index});if(floating)void invoke('close_player');const video=dataRef.current.savedVideos[q.ids[index]]??linkVideo(q.ids[index]);if(route.name==='watch')go({name:'watch',video});else setActiveVideo(video)}
  function submit(value:string) {
-   setPlaylist(undefined)
    const term=value.trim()
    if(!term)return
    const link=parseVideo(term)
@@ -154,7 +157,7 @@ function App() {
    if(!visible(v,s))setNotice('This video is hidden by your filters.')
    else go({name:'watch',video:v})
  }
- const shared:Shared={data,change,playNext:v=>{setPlaylist(undefined);setActiveVideo(v)},playPlaylist,enqueue:v=>{setPlaylist(q=>{const base=q??{name:'Queue',ids:activeVideo?[activeVideo.id]:[],index:0,repeat:false};return {...base,ids:[...new Set([...base.ids,v.id])]}});change(d=>rememberVideo(d,v));setNotice('');requestAnimationFrame(()=>setNotice('Added to queue'));if(!activeVideo){setActiveVideo(v);go({name:'watch',video:v})}},feeds,followIds,live:followedLive,watch:v=>{setPlaylist(undefined);if(data.settings.history)change(d=>rememberVideo(d,v));if(floating)void invoke('close_player');go({name:'watch',video:v})},channel:id=>go({name:'channel',id}),follow:id=>{if(channelId(id))change(d=>({...d,follows:toggled(d.follows,id)}))},subscriptions:()=>go({name:'subscriptions'}),discover:()=>go({name:'discover'})}
+ const shared:Shared={data,change,playNext:v=>{setPlaylist(q=>selectQueueVideo(q,v.id));setActiveVideo(v)},playPlaylist,enqueue:v=>{setPlaylist(q=>{const base=q??{name:'Queue',ids:activeVideo?[activeVideo.id]:[],index:0,repeat:false};return {...base,ids:[...new Set([...base.ids,v.id])]}});change(d=>rememberVideo(d,v));setNotice('');requestAnimationFrame(()=>setNotice('Added to queue'));if(!activeVideo){setActiveVideo(v);go({name:'watch',video:v})}},feeds,followIds,live:followedLive,watch:v=>{if(data.settings.history)change(d=>rememberVideo(d,v));if(floating)void invoke('close_player');go({name:'watch',video:v})},channel:id=>go({name:'channel',id}),follow:id=>{if(channelId(id))change(d=>({...d,follows:toggled(d.follows,id)}))},subscriptions:()=>go({name:'subscriptions'}),discover:()=>go({name:'discover'})}
  const noteSample=(id:string,position:number,duration:number,elapsed:number,live=false)=>{
    if(!Number.isFinite(elapsed)||elapsed<0)return
    const settings=dataRef.current.settings
@@ -178,17 +181,18 @@ function App() {
     }
     setUpdateSettingsRequest(n=>n+1)
    }),
-   listen<string>('embedded-video',({payload:id})=>{if(!videoId(id))return;const previous=routeRef.current;if(previous.name==='watch'&&previous.video.id===id)return;routes.current.push({route:previous,text:previous.name==='search'?previous.query:'',scroll:main.current?.scrollTop??0});setPlaylist(undefined);setPlaybackRun(n=>n+1);setActiveVideo(linkVideo(id));setRoute({name:'watch',video:linkVideo(id)})}),
+   listen<string>('embedded-video',({payload:id})=>{if(!videoId(id))return;const previous=routeRef.current;if(previous.name==='watch'&&previous.video.id===id)return;routes.current.push({route:previous,text:previous.name==='search'?previous.query:'',scroll:main.current?.scrollTop??0});setPlaylist(q=>selectQueueVideo(q,id));setPlaybackRun(n=>n+1);setActiveVideo(linkVideo(id));setRoute({name:'watch',video:linkVideo(id)})}),
    listen<{video:Video;position:number;duration:number;elapsed:number;started:boolean}>('player-sample',({payload:p})=>{
     if(p.started&&dataRef.current.settings.history)change(d=>({...rememberVideo(d,p.video),history:{...d.history,[p.video.id]:Date.now()}}))
     if(!p.started){noteSample(p.video.id,p.position,p.duration,p.elapsed,!!p.video.live);session.add(p.elapsed);setFloating(old=>old?{...old,start:p.position}:old)}
    }),
-   listen<Video>('player-video',({payload:video})=>{setFloating({video,start:0});setActiveVideo(video);setPlaylist(q=>q&&q.ids.includes(video.id)?{...q,index:q.ids.indexOf(video.id)}:undefined);setRoute(old=>old.name==='watch'?{name:'watch',video}:old)}),
-   listen<PlaylistQueue|undefined>('player-queue',({payload:q})=>setPlaylist(q??undefined)),
+   listen<Video>('player-video',({payload:video})=>{setFloating({video,start:0});setActiveVideo(video);setPlaylist(q=>selectQueueVideo(q,video.id));setRoute(old=>old.name==='watch'?{name:'watch',video}:old)}),
+   listen<PlaylistQueue|undefined>('player-queue',({payload:q})=>setPlaylist(old=>JSON.stringify(old??null)===JSON.stringify(q??null)?old:q??undefined)),
    listen<boolean>('player-autoplay',({payload:enabled})=>change(d=>({...d,settings:{...d.settings,autoplay:enabled}}))),
    listen<{video:Video;start:number}>('player-closed',({payload:p})=>{setPlaybackRun(n=>n+1);setReturned({id:p.video.id,start:p.start??0});setFloating(null)})
   ];return()=>{subscriptions.forEach(off=>void off.then(f=>f()))}
  },[])
+ useEffect(()=>{if(floating)void invoke('player_queue',{queue:playlist??null}).catch(e=>setNotice(errorText(e)))},[playlist,!!floating])
  const navActive=route.name
  const liveChannels=followIds.filter(id=>!!followedLive.states[id]?.video&&!followedLive.states[id]?.error)
  const sidebarFollows=[...liveChannels,...followIds.filter(id=>!liveChannels.includes(id))]
@@ -227,7 +231,7 @@ function App() {
  route.name==='subscriptions'?<Subscriptions shared={shared}/>:
  route.name==='channel'?<ChannelPage key={route.id} shared={shared} id={route.id} tab={route.tab} setTab={tab=>setRoute({...route,tab})}/>:
  route.name==='watch'?null:<LibraryPage key={route.name} shared={shared} kind={route.name}/>}
- {activeVideo&&<Watch key={activeVideo.id+':'+playbackRun} video={activeVideo} onOpenRoom={openRoom} roomPlayback={watchRoom.playback} inRoom={!!watchRoom.room} onRoomController={read=>{readRoomPlayback.current=read}} shared={shared} theater={theater} setTheater={setTheater} onSample={noteSample} onElapsed={session.add} playlist={playlist} onQueueChange={q=>{if(playlist?.name&&playlist.name!=='Queue')change(d=>playlist.name==='Favorites'?{...d,favorites:q?.ids??[]}:{...d,collections:d.collections.map(c=>c.name===playlist.name?{...c,ids:q?.ids??[]}:c)});setPlaylist(q);if(q&&q.ids[q.index]!==activeVideo.id){const video=data.savedVideos[q.ids[q.index]]??linkVideo(q.ids[q.index]);setPlaybackRun(n=>n+1);if(route.name==='watch')go({name:'watch',video});else setActiveVideo(video)}}} onQueueWatch={queueWatch} onQueueClose={()=>setPlaylist(undefined)} onQueueRepeat={()=>setPlaylist(q=>q?{...q,repeat:!q.repeat}:q)} docked={route.name!=='watch'} onRestore={()=>{let previous=-1;for(let i=routes.current.length-1;i>=0;i--)if(routes.current[i].route.name==='watch'&&(routes.current[i].route as {video:Video}).video.id===activeVideo.id){previous=i;break}if(previous>=0){const entry=routes.current[previous];routes.current=routes.current.slice(0,previous);restoreScroll.current=entry.scroll;setRoute({name:'watch',video:activeVideo})}else go({name:'watch',video:activeVideo})}} onStop={()=>{if(watchRoom.room)void watchRoom.leave();setActiveVideo(undefined);setPlaylist(undefined);if(floating)void invoke('close_player');setFloating(null)}} popped={floating?.video.id===activeVideo.id} returned={returned?.id===activeVideo.id?returned.start:undefined} onPopout={async(video,start)=>{await invoke('open_player',{payload:{video,start,theme:s.theme,accent:s.accent,autoplay:s.autoplay,playlist}});setFloating({video,start})}}/>}
+ {activeVideo&&<Watch key={activeVideo.id+':'+playbackRun} video={activeVideo} onOpenRoom={openRoom} roomPlayback={watchRoom.playback} inRoom={!!watchRoom.room} onRoomController={read=>{readRoomPlayback.current=read}} shared={shared} theater={theater} setTheater={setTheater} onSample={noteSample} onElapsed={session.add} playlist={playlist} showQueue={showQueue} setShowQueue={setShowQueue} onQueueChange={q=>{if(playlist?.name&&playlist.name!=='Queue')change(d=>playlist.name==='Favorites'?{...d,favorites:q?.ids??[]}:{...d,collections:d.collections.map(c=>c.name===playlist.name?{...c,ids:q?.ids??[]}:c)});setPlaylist(q);if(q&&q.ids[q.index]!==activeVideo.id){const video=data.savedVideos[q.ids[q.index]]??linkVideo(q.ids[q.index]);setPlaybackRun(n=>n+1);if(route.name==='watch')go({name:'watch',video});else setActiveVideo(video)}}} onQueueWatch={queueWatch} onQueueClose={()=>setPlaylist(undefined)} onQueueRepeat={()=>setPlaylist(q=>q?{...q,repeat:!q.repeat}:q)} docked={route.name!=='watch'} onRestore={()=>{let previous=-1;for(let i=routes.current.length-1;i>=0;i--)if(routes.current[i].route.name==='watch'&&(routes.current[i].route as {video:Video}).video.id===activeVideo.id){previous=i;break}if(previous>=0){const entry=routes.current[previous];routes.current=routes.current.slice(0,previous);restoreScroll.current=entry.scroll;setRoute({name:'watch',video:activeVideo})}else go({name:'watch',video:activeVideo})}} onStop={()=>{if(watchRoom.room)void watchRoom.leave();setActiveVideo(undefined);setShowQueue(false);if(floating)void invoke('close_player');setFloating(null)}} popped={floating?.video.id===activeVideo.id} returned={returned?.id===activeVideo.id?returned.start:undefined} onPopout={async(video,start)=>{await invoke('open_player',{payload:{video,start,theme:s.theme,accent:s.accent,autoplay:s.autoplay,playlist}});setFloating({video,start})}}/>}
  {true&&route.name!=='settings'&&<footer className="attribution"><button aria-label="Developed with YouTube; open YouTube" onClick={()=>invoke('open_info',{page:'youtube'}).catch(e=>setNotice(errorText(e)))}><img src={s.theme==='dark'?new URL('./youtube-light.png',import.meta.url).href:new URL('./youtube-dark.png',import.meta.url).href} alt="Developed with YouTube"/></button></footer>}
  </main><UpdateNotice updates={updates}/><WatchTogether session={watchRoom} canHost={!!activeVideo&&!floating&&!activeVideo.live&&!activeVideo.scheduledAt} dialog={roomDialog}/></div></VideoPreviews.Provider>
 }
