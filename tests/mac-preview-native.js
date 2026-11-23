@@ -6,10 +6,6 @@
  let done=false,checking=false,probe,first;
  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  function finish(){if(done)return;done=true;native('preview_check_result',{report});}
- window.__TAURI_INTERNALS__.invoke=(command,args)=>native(command,args).then(value=>{
-  if(command==='preview_stream'){report.sourceResolved=true;report.states.push({state:'ready'});report.sourceIsHTTPSGoogleVideo=typeof value==='string'&&new URL(value).protocol==='https:'&&new URL(value).hostname.endsWith('.googlevideo.com');}
-  return value;
- }).catch(error=>{if(command==='preview_stream'||command==='preview_prepare'){report.errors.push(String(error));finish();}throw error;});
  function checkAutoplay(){if(probe)return;probe=document.createElement('iframe');probe.allow='autoplay *';probe.style='position:fixed;right:0;top:0;width:320px;height:180px;z-index:99999;border:0';probe.src='https://sunshiinedolly.github.io/Viddy/autoplay-check.html';document.body.appendChild(probe);}
  async function checkControls(video){
   if(checking)return;checking=true;
@@ -30,7 +26,14 @@
   if(event.data?.type==='viddy-player'&&event.data.event==='ready'){report.mainPlayerReady=true;setTimeout(checkAutoplay,500);}
   if(event.data?.type==='viddy-player'&&event.data.event==='error')report.mainPlayerError=event.data.value;
  });
- const hover=setInterval(()=>{const card=document.querySelector('.content > div:not([hidden]) .card .thumbnail');if(card){clearInterval(hover);card.dispatchEvent(new MouseEvent('mouseover',{bubbles:true,relatedTarget:null}));}},200);
+ void (async()=>{
+  await native('preview_prepare');
+  const source=await native('preview_stream',{id:'M7lc1UVf-VE',fresh:true});
+  report.sourceResolved=true;report.states.push({state:'ready'});
+  const url=new URL(source);report.sourceIsHTTPSGoogleVideo=url.protocol==='https:'&&url.hostname.endsWith('.googlevideo.com');
+  const hover=setInterval(()=>{const card=document.querySelector('.content > div:not([hidden]) .card .thumbnail');if(card){clearInterval(hover);card.dispatchEvent(new MouseEvent('mouseover',{bubbles:true,relatedTarget:null}));}},200);
+ })().catch(error=>{report.errors.push(String(error));finish();});
+
  setInterval(()=>{
   const video=document.querySelector('.thumbnail-preview-native video');if(!video||video.readyState<2||!video.videoWidth)return;
   first??=video.currentTime;
