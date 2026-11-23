@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {appendRecommendations,expandRecommendationPlan,rankRecommendations,recommendationPlan,viewingTaste} from '../src/recommendations.ts'
+import {appendRecommendations,expandRecommendationPlan,rankRecommendations,recommendationPlan,viewingTaste,recommendationTaste,followedCandidates} from '../src/recommendations.ts'
 import {decode,empty,recordViewing} from '../src/library.ts'
 import {visible,type Video} from '../src/domain.ts'
 
@@ -106,4 +106,53 @@ test('phrase filters match titles and descriptions without hiding unrelated subs
  assert.equal(visible({...base,title:'C++ for beginners'},f),false)
  assert.equal(visible({...base,title:'広告なし動画'},f),false)
  assert.equal(visible({...base,creators:[{id:'blocked',name:'Guest'}]},f),false)
+})
+
+test('explicit saves guide Home and Up next without enabling watch-history collection',()=>{
+ for(const list of ['later','favorites','playlist'] as const){
+  const data=empty();data.settings.history=false
+  const saved={...video(500),title:'Watercolor forest pigments',category:'Art & design'}
+  data.savedVideos[saved.id]=saved
+  if(list==='playlist')data.collections=[{name:'Painting',ids:[saved.id]}];else data[list]=[saved.id]
+  const related={...video(501),title:'Watercolor forest layering',category:'Art & design'}
+  const unrelated={...video(502),title:'Minecraft survival challenge',category:'Gaming'}
+  assert.equal(rankRecommendations([unrelated,related],data,{},17,new Set())[0]?.id,related.id,list)
+  assert(recommendationPlan(data,'home',17).some(s=>s.query.includes('watercolor')),list)
+  assert.deepEqual(rankRecommendations([unrelated,related],data,{},17,new Set(),48,'discover'),rankRecommendations([unrelated,related],empty(),{},17,new Set(),48,'discover'))
+ }
+})
+
+test('duplicate playlist membership counts once and one large creator playlist has bounded influence',()=>{
+ const data=empty(),saved=video(600,'one-creator');data.savedVideos[saved.id]=saved;data.favorites=[saved.id]
+ const single=recommendationTaste(data)
+ data.later=[saved.id];data.collections=Array.from({length:200},(_,i)=>({name:'Playlist '+i,ids:Array(20).fill(saved.id)}))
+ assert.deepEqual(recommendationTaste(data),single)
+ for(let n=1;n<300;n++){const v=video(600+n,'one-creator');data.savedVideos[v.id]=v;data.favorites.push(v.id)}
+ assert.equal(recommendationTaste(data).creators['one-creator'],6)
+ assert.equal(recommendationTaste(data).examples.length,3)
+})
+
+test('growing follows rotate across known feed creators instead of always searching the first creator',()=>{
+ const data=empty(),known=Array.from({length:120},(_,i)=>({...video(1000+i,'follow-'+i),channel:'Known creator '+i}))
+ data.follows=known.map(v=>v.channelId)
+ const selected=new Set<string>()
+ for(let seed=0;seed<120;seed++)for(const source of recommendationPlan(data,'home',seed,known))if(source.query.startsWith('Known creator'))selected.add(source.query)
+ assert.equal(selected.size,120)
+ const pool=followedCandidates([...known,{...video(9999),channel:'Not followed'}],data,110)
+ assert.equal(pool.length,48);assert(pool.some(v=>v.channel==='Known creator 119'));assert(pool.some(v=>v.channel==='Known creator 0'))
+ assert(pool.every(v=>data.follows.includes(v.channelId)))
+})
+
+test('large histories and follow lists retain exclusions, variety and an exploration lane',()=>{
+ const data=empty(),now=Date.now()
+ data.follows=Array.from({length:5000},(_,i)=>'follow-'+i)
+ for(let n=0;n<5000;n++)data.history[video(n).id]=now
+ data.dismissed=Array.from({length:5000},(_,i)=>video(5000+i).id)
+ const saved={...video(20000,'follow-1'),title:'Watercolor forest pigments',category:'Art & design'}
+ data.savedVideos[saved.id]=saved;data.later=[saved.id]
+ const candidates=Array.from({length:1200},(_,n)=>({...video(10000+n,'follow-'+n),title:n%3?'Watercolor forest technique '+n:'Cooking new recipe '+n,category:n%3?'Art & design':'Food'}))
+ const result=rankRecommendations([...candidates,video(1),video(5001)],data,{},19,new Set(),96)
+ assert.equal(result.length,96);assert(result.every(v=>!data.history[v.id]&&!data.dismissed.includes(v.id)))
+ assert(new Set(result.slice(0,20).map(v=>v.channelId)).size>=10)
+ assert(result.slice(0,20).some(v=>v.category==='Food'))
 })

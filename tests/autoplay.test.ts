@@ -56,3 +56,12 @@ test('public watch-page recommendations outrank generic matches while keeping wa
 test('scrolling recommendations can grow beyond 24 without repeating IDs',()=>{
  const items=Array.from({length:80},(_,i)=>video(String(i).padStart(11,'0'),'creator'+(i%20)));const result=nextVideos(video('current0000'),items,empty(),[],[],Infinity);assert.equal(result.length,80);assert.equal(new Set(result.map(v=>v.id)).size,80)
 })
+
+test('Up next uses saved playlist subjects and creators even with history disabled',()=>{
+ const data=empty();data.settings.history=false
+ const saved={...video('saved000001','saved-creator','Art & design'),title:'Watercolor forest pigments'}
+ data.savedVideos[saved.id]=saved;data.collections=[{name:'Painting',ids:[saved.id]}]
+ const related={...video('related0001','saved-creator','Art & design'),title:'Watercolor forest layers'}
+ const unrelated={...video('unrelated01','other','Music'),title:'Acoustic guitar session'}
+ assert.equal(nextVideos(video('current0001','current','Film'),[unrelated,related],data)[0]?.id,related.id)
+})

@@ -1,4 +1,4 @@
-import {useCallback,useState} from 'react'
+import {useCallback,useMemo,useState} from 'react'
 import {Play,RefreshCw} from 'lucide-react'
 import {AutoMore,Empty,Loading} from './components'
 import {Grid,Heading,Notice,type Shared} from './screens'
@@ -16,7 +16,8 @@ import {Thumbnail} from './thumbnail'
 import {useFilteredVideos} from './filtered-videos'
 
 export function RecommendationFeed({shared,surface,active=true}:{shared:Shared;surface:Surface;active?:boolean}){
- const {feed,target,refresh,more,hasMore}=useRecommendations(surface,shared.data)
+ const followed=useMemo(()=>surface==='home'?shared.data.follows.flatMap(id=>shared.feeds.states[id]?.feed?.videos.slice(0,2)??[]):[],[surface,shared.data.follows,shared.feeds.states])
+ const {feed,target,refresh,more,hasMore}=useRecommendations(surface,shared.data,followed)
  const [topic,setTopic]=useState('All')
  const railTopics=['All','Gaming','Vlogs','Style & beauty','Fashion','Home & lifestyle','Music','Anime','Learning','Travel',...topics.map(t=>t.name).filter(name=>!['Gaming','Vlogs','Style & beauty','Fashion','Home & lifestyle','Music','Anime','Learning','Travel'].includes(name))]
  const filters=shared.data.settings
@@ -28,7 +29,8 @@ export function RecommendationFeed({shared,surface,active=true}:{shared:Shared;s
  const reserveItems=filters.keywords.length?mixByTopic(reserve.map(({id,category})=>
    (feedReserve.states[id]?.feed?.videos??[]).filter(v=>v.metadataComplete&&!v.live&&!alreadyLive.has(v.id)).slice(0,8)
      .map(v=>({...v,category})))):[]
- const candidates=unique([...(feed?.items??[]),...reserveItems]).filter(v=>!shared.data.dismissed.includes(v.id)&&visible(v,filters)&&(surface!=='home'||!filters.history||!shared.data.history[v.id]))
+ const dismissed=new Set(shared.data.dismissed)
+ const candidates=unique([...(feed?.items??[]),...reserveItems]).filter(v=>!dismissed.has(v.id)&&visible(v,filters)&&(surface!=='home'||!filters.history||!shared.data.history[v.id]))
  const videos=useFilteredVideos(candidates,filters,false)
  const change=shared.change
  const recommendationReason=useCallback((v:typeof videos[number])=><div className="recommendation-reason"><span>{v.category}</span><button title="Remove this recommendation" onClick={()=>change(d=>({...d,dismissed:[...new Set([...d.dismissed,v.id])].slice(-5000)}))}>Not interested</button></div>,[change])
@@ -37,7 +39,7 @@ export function RecommendationFeed({shared,surface,active=true}:{shared:Shared;s
    {surface==='home'&&<FollowedLiveShelf shared={shared}/>}
    <div className="row recommendation-toolbar"><p>{surface==='discover'?'Explore beyond your usual creators.':'A surprise shaped by what you watch.'}</p><div className="recommendation-actions">{topic==='All'&&<RandomWatch items={videos??[]} shared={shared} surface={surface}/>} {surface==='discover'&&<button className="button" disabled={feed?.busy} onClick={refresh}><RefreshCw size={16}/> New mix</button>}</div></div>
    {topic==='All'?<>
-   {!videos.length&&(!feed||feed.busy||feedReserve.busy)?<Loading/>:videos.length?<section className="studio-shelf" aria-label="Recommended videos"><Grid shared={shared} items={videos} extra={recommendationReason}/></section>:feed?.error?<><Notice text={feed.error}/><button className="button" onClick={refresh}>Try again</button></>:<Empty title="Time for something new" detail="Refresh the mix for new topics and creators." action={<button className="button" onClick={refresh}>New mix</button>}/>}
+   {!videos.length&&(!feed||feed.busy||feedReserve.busy||hasMore&&!feed.moreError&&!feed.error)?<Loading/>:videos.length?<section className="studio-shelf" aria-label="Recommended videos"><Grid shared={shared} items={videos} extra={recommendationReason}/></section>:feed?.error?<><Notice text={feed.error}/><button className="button" onClick={refresh}>Try again</button></>:<Empty title="Time for something new" detail="Refresh the mix for new topics and creators." action={<button className="button" onClick={refresh}>New mix</button>}/>}
    <AutoMore enabled={active&&hasMore} revision={feed?.sources.map(s=>s.next?.token??s.loaded).join()} busy={!!feed?.busy} error={feed?.moreError} onReach={()=>void more()}/></>:<TopicCatalog key={topic} topic={topic} shared={shared} exclude={[]} surface={surface} active={active}/>}
  </div>
 }

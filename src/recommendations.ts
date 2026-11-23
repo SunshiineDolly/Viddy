@@ -54,8 +54,30 @@ export function viewingTaste(data:Library,now=Date.now()){
  }
  return {categories,creators,terms,examples}
 }
-export function recommendationPlan(data:Library,surface:Surface,seed:number){
- const taste=surface==='home'?viewingTaste(data):undefined
+// Explicit saves remain useful with watch-history collection switched off.
+// Count each video once, even if it belongs to several playlists, and bound
+// each creator's contribution so a large playlist cannot take over the feed.
+export function recommendationTaste(data:Library,now=Date.now()){
+ const taste=viewingTaste(data,now),saved=new Map<string,number>(),creators=new Map<string,number>()
+ const add=(ids:string[],weight:number)=>{for(const id of ids)if(data.savedVideos[id])saved.set(id,Math.max(weight,saved.get(id)??0))}
+ add(data.favorites,2);add(data.later,1.2)
+ for(const collection of data.collections)add(collection.ids,1.5)
+ const dismissed=new Set(data.dismissed)
+ for(const [id,weight] of saved){
+  const video=data.savedVideos[id],creator=creatorKey(video)
+  if(dismissed.has(id)||!visible(video,data.settings)||(creators.get(creator)??0)>=3)continue
+  creators.set(creator,(creators.get(creator)??0)+1)
+  const category=categoryFor(video)
+  if(category)taste.categories[category]=(taste.categories[category]??0)+weight
+  if(creator)taste.creators[creator]=(taste.creators[creator]??0)+weight
+  for(const word of titleWords(video.title))taste.terms[word]=(taste.terms[word]??0)+weight
+  if(!taste.examples.some(v=>v.id===id))taste.examples.push(video)
+ }
+ return taste
+}
+
+export function recommendationPlan(data:Library,surface:Surface,seed:number,knownVideos:Video[]=[]){
+ const taste=surface==='home'?recommendationTaste(data):undefined
  const scores=Object.fromEntries(topics.map(t=>[t.name,(taste?.categories[t.name]??0)*6+(data.preferredTopics.includes(t.name)?8:0)
    +(data.settings.history?Math.min(data.interests[t.name]??0,6)*.4:0)]))
  const preferred=surface==='discover'?[]:rankedTopics(scores).filter(t=>scores[t.name]>0)
@@ -69,20 +91,41 @@ export function recommendationPlan(data:Library,surface:Surface,seed:number){
    return {topic:t.name,query:options[(seed+index)%options.length],filter:(index%2===0?'all':'latest') as 'all'|'latest'}
  })
  if(surface==='home'){
-  const remembered=[...taste!.examples,...Object.values(data.savedVideos).filter(v=>data.follows.includes(v.channelId))]
-  const creator=remembered.find(v=>v.channel&&v.channel!=='Creator'&&visible(v,data.settings))
-  if(creator)plan.push({topic:categoryFor(creator)??'From creators you watch',query:creator.channel+' latest videos',filter:'latest'})
+  const follows=new Set(data.follows),creators=new Map<string,Video>()
+  const remembered=[...Object.values(data.savedVideos),...knownVideos].filter(v=>follows.has(v.channelId))
+  for(const video of [...remembered,...taste!.examples])if(video.channel&&video.channel!=='Creator'&&visible(video,data.settings)){
+   if(!creators.has(creatorKey(video)))creators.set(creatorKey(video),video)
+  }
+  const choices=[...creators.values()]
+  for(let n=0;n<Math.min(3,choices.length);n++){
+   const creator=choices[(seed+n)%choices.length]
+   plan.push({topic:categoryFor(creator)??'From creators you watch',query:creator.channel+' latest videos',filter:'latest'})
+  }
   const examples=taste!.examples.filter(v=>relatedQuery(v).split(' ').length>=2)
-  const example=examples.length?examples[seed%Math.min(3,examples.length)]:undefined
+  const example=examples.length?examples[seed%examples.length]:undefined
   if(example)plan.push({topic:categoryFor(example)??'From your watch history',query:relatedQuery(example),filter:'all'})
  }
  return plan
 }
 
+export function followedCandidates(videos:Video[],data:Library,seed:number){
+ const follows=new Set(data.follows),creators=new Map<string,Video[]>()
+ for(const video of videos)if(follows.has(video.channelId)){
+  const group=creators.get(video.channelId)??[]
+  if(group.length<2)group.push(video)
+  creators.set(video.channelId,group)
+ }
+ const groups=[...creators.values()],result:Video[]=[]
+ for(let n=0;n<Math.min(48,groups.length);n++)result.push(...groups[(seed+n)%groups.length])
+ return result
+}
+
 export function rankRecommendations(items:Video[],data:Library,seen:Record<string,number>,seed:number,excluded:Set<string>,limit=48,surface:Surface='home'){
- const now=Date.now(),personal=surface==='home',taste=personal?viewingTaste(data,now):undefined
+ if(limit<=0)return []
+ const now=Date.now(),personal=surface==='home',taste=personal?recommendationTaste(data,now):undefined
+ const dismissed=new Set(data.dismissed),follows=new Set(data.follows)
  const watched=personal&&data.settings.history?data.history:{}
- const candidates=unique(items).filter(v=>!v.live&&!v.upcoming&&!v.scheduledAt&&!excluded.has(v.id)&&!data.dismissed.includes(v.id)&&!watched[v.id]&&!(personal&&data.settings.history&&data.settings.progress&&data.progress[v.id]?.at>0)&&visible(v,data.settings))
+ const candidates=unique(items).filter(v=>!v.live&&!v.upcoming&&!v.scheduledAt&&!excluded.has(v.id)&&!dismissed.has(v.id)&&!watched[v.id]&&!(personal&&data.settings.history&&data.settings.progress&&data.progress[v.id]?.at>0)&&visible(v,data.settings))
  const affinities=new Map<string,number>()
  const score=(v:Video)=>{
    const exposure=seen[v.id]??0
@@ -91,7 +134,7 @@ export function rankRecommendations(items:Video[],data:Library,seen:Record<strin
    const relevance=!taste?0:Math.min(36,(taste.categories[topic]??0)*5)
      +Math.min(34,(taste.creators[creatorKey(v)]??0)*8)
      +Math.min(70,titleWords(v.title).reduce((sum,word)=>sum+Math.min(25,(taste.terms[word]??0)*9),0))
-     +(data.preferredTopics.includes(topic)?24:0)+(data.follows.includes(v.channelId)?22:0)
+     +(data.preferredTopics.includes(topic)?24:0)+(follows.has(v.channelId)?22:0)
      +(data.settings.history?Math.min(data.interests[topic]??0,8):0)
    affinities.set(v.id,relevance)
    return hash(seed+v.id)%19+relevance+Math.max(0,16-uploadAge(v)/86_400)-penalty
@@ -104,11 +147,10 @@ export function rankRecommendations(items:Video[],data:Library,seen:Record<strin
    const title=video.title.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()
    if((counts.get(creator)??0)>=2||titles.has(title))continue
    counts.set(creator,(counts.get(creator)??0)+1);titles.add(title);result.push(video)
-   if(result.length>=limit)break
  }
  if(personal&&result.some(v=>(affinities.get(v.id)??0)>=24)){
    const output:Video[]=[]
-   while(result.length){
+   while(result.length&&output.length<limit){
      const index=output.length%4===3?result.findIndex(v=>(affinities.get(v.id)??0)<24&&now-(seen[v.id]??0)>=86_400_000):-1
      output.push(...result.splice(Math.max(index,0),1))
    }
@@ -116,7 +158,7 @@ export function rankRecommendations(items:Video[],data:Library,seen:Record<strin
  }
  // On an untuned feed, alternate topics.
  const output:Video[]=[]
- while(result.length){
+ while(result.length&&output.length<limit){
    const index=result.findIndex(v=>(!output.length||v.category!==output.at(-1)?.category)&&scores.get(result[0].id)!-scores.get(v.id)!<=24)
    output.push(...result.splice(index<0?0:index,1))
  }
