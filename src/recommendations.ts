@@ -25,6 +25,7 @@ function titleWords(title:string){
    ?.filter(word=>word.length>=3&&!/^\d+$/.test(word)&&!genericWords.has(word))??[])]
 }
 export const relatedQuery=(video:Video)=>titleWords(video.title).slice(0,7).join(' ')
+export const labelRecommendation=(video:Video,fallback:string):Video=>({...video,category:categoryFor(video)??fallback})
 const creatorKey=(v:Video)=>v.channelId||v.channel.toLowerCase()
 
 export function viewingTaste(data:Library,now=Date.now()){

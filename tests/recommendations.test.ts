@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {appendRecommendations,expandRecommendationPlan,rankRecommendations,recommendationPlan,viewingTaste,recommendationTaste,followedCandidates} from '../src/recommendations.ts'
+import {appendRecommendations,expandRecommendationPlan,rankRecommendations,recommendationPlan,viewingTaste,recommendationTaste,followedCandidates,labelRecommendation} from '../src/recommendations.ts'
 import {decode,empty,recordViewing} from '../src/library.ts'
 import {visible,type Video} from '../src/domain.ts'
 
@@ -155,4 +155,10 @@ test('large histories and follow lists retain exclusions, variety and an explora
  assert.equal(result.length,96);assert(result.every(v=>!data.history[v.id]&&!data.dismissed.includes(v.id)))
  assert(new Set(result.slice(0,20).map(v=>v.channelId)).size>=10)
  assert(result.slice(0,20).some(v=>v.category==='Food'))
+})
+
+test('search topics do not overwrite the actual or inferred subject of a recommended video',()=>{
+ assert.equal(labelRecommendation({...video(22000),category:'10',title:'Acoustic guitar session'},'Gaming').category,'Music')
+ assert.equal(labelRecommendation({...video(22001),category:undefined,title:'Minecraft gameplay challenge'},'Food').category,'Gaming')
+ assert.equal(labelRecommendation({...video(22002),category:undefined,title:'Personal journal chapter'},'Vlogs').category,'Vlogs')
 })

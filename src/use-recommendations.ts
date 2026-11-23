@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,useSyncExternalStore} from 'react'
 import {requestCatalog,type CatalogPage} from './catalog'
 import {errorText,type Video} from './domain'
-import {appendRecommendations,expandRecommendationPlan,followedCandidates,recommendationPlan,rankRecommendations,type Surface} from './recommendations'
+import {appendRecommendations,expandRecommendationPlan,followedCandidates,labelRecommendation,recommendationPlan,rankRecommendations,type Surface} from './recommendations'
 import type {Library} from './library'
 
 type Source={topic:string;query:string;filter:'all'|'latest';next:CatalogPage['next'];loaded:boolean;visited?:Set<string>}
@@ -86,7 +86,7 @@ export function useRecommendations(surface:Surface,data:Library,knownVideos:Vide
      void requestCatalog(source.query,source.filter,null,iteration>0).then(page=>{
        if(!active||generation.current!==run)return
        success=true;sources[index]={...sources[index],next:page.next,loaded:true}
-       pool.push(...page.items.map(video=>({...video,category:source.topic})))
+       pool.push(...page.items.map(video=>labelRecommendation(video,source.topic)))
      },reason=>{error??=errorText(reason)}).finally(()=>{remaining--;publish()})
    })
    return ()=>{active=false;generation.current++}
@@ -127,7 +127,7 @@ export function useRecommendations(surface:Surface,data:Library,knownVideos:Vide
      let page=await requestCatalog(source.query,source.filter,source.next)
      const existing=new Set(sessionRef.current?.items.map(v=>v.id)??[])
      const exclusions=new Set([...other(),...existing])
-     const rank=(items:Video[])=>rankRecommendations([...items.map(v=>({...v,category:source.topic})),...(surface==='home'?followedCandidates(known.current,current.current,base.seed+existing.size):[])],current.current,exposures,base.seed,exclusions,30,surface)
+     const rank=(items:Video[])=>rankRecommendations([...items.map(v=>labelRecommendation(v,source.topic)),...(surface==='home'?followedCandidates(known.current,current.current,base.seed+existing.size):[])],current.current,exposures,base.seed,exclusions,30,surface)
      let candidates=rank(page.items)
      for(let skip=0;!candidates.length&&page.next&&!visited.has(page.next.token)&&skip<2;skip++){
        const cursor=page.next
