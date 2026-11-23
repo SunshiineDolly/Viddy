@@ -1,5 +1,6 @@
 import {isMac} from './platform'
-import {macYouTubePreviewUrl} from './youtube-embed'
+import {macPreviewSource,prepareMacPreviews,forgetMacPreview} from './mac-preview'
+import {recordNativePreview} from './playback-diagnostics'
 import {configureYouTubeFrame} from './youtube-embed'
 import {createContext,useContext,useEffect,useRef,useState} from 'react'
 import {Play} from 'lucide-react'
@@ -9,27 +10,33 @@ import {playerApi} from './player'
 
 export const VideoPreviews=createContext(true)
 
-function MacYouTubePreview({id}:{id:string}){
+function MacVideoPreview({id,poster}:{id:string;poster:string}){
  const mount=useRef<HTMLSpanElement>(null)
  const [failed,setFailed]=useState(false)
  useEffect(()=>{
-  const host=mount.current!
-  let active=true,origin=''
-  const frame=document.createElement('iframe')
-  frame.title='Muted YouTube video preview';frame.tabIndex=-1;frame.allow='autoplay *; encrypted-media *'
-  const receive=(event:MessageEvent)=>{
-   if(!active||event.source!==frame.contentWindow||event.origin!==origin||event.data?.type!=='viddy-video-preview'||event.data.id!==id)return
-   if(['error','blocked','ended'].includes(event.data.state)){frame.remove();setFailed(true)}
-  }
-  window.addEventListener('message',receive)
-  void macYouTubePreviewUrl(id).then(url=>{
+  const host=mount.current!,controller=new AbortController(),video=document.createElement('video')
+  let active=true,advanced=false,firstTime:number|undefined
+  video.muted=true;video.defaultMuted=true;video.volume=0;video.playsInline=true;video.loop=true;video.preload='auto';video.controls=false;video.disablePictureInPicture=true;video.poster=poster
+  video.setAttribute('muted','');video.setAttribute('playsinline','');video.tabIndex=-1
+  const fail=(code:number|null=null)=>{if(active){active=false;controller.abort();forgetMacPreview(id);recordNativePreview('error',code);video.pause();video.removeAttribute('src');video.load();host.replaceChildren();setFailed(true)}}
+  video.addEventListener('error',()=>fail(video.error?.code??null))
+  video.addEventListener('playing',()=>{if(active)recordNativePreview('playing')})
+  video.addEventListener('timeupdate',()=>{
    if(!active)return
-   origin=new URL(url).origin;frame.src=url;host.appendChild(frame)
-  }).catch(()=>{if(active)setFailed(true)})
-  return()=>{active=false;window.removeEventListener('message',receive);host.replaceChildren()}
- },[id])
- if(failed)return null
- return <span ref={mount} className="thumbnail-preview thumbnail-preview-mac" aria-hidden="true"/>
+   firstTime??=video.currentTime
+   if(!advanced&&video.currentTime>firstTime+.5){advanced=true;host.dataset.playing='true';recordNativePreview('time-advanced')}
+   if(video.currentTime>=20)video.currentTime=0
+  })
+  host.appendChild(video);recordNativePreview('preparing')
+  void macPreviewSource(id,controller.signal).then(url=>{
+   if(!active)return
+   recordNativePreview('source-ready');video.src=url
+   void video.play().catch(error=>{if(error?.name!=='AbortError')fail(video.error?.code??null)})
+  }).catch(error=>{if(error?.name!=='AbortError')fail()})
+  return()=>{active=false;controller.abort();video.pause();video.removeAttribute('src');video.load();host.replaceChildren();recordNativePreview('stopped')}
+ },[id,poster])
+ if(failed)return <span className="preview-unavailable" aria-hidden="true">Preview unavailable</span>
+ return <span ref={mount} className="thumbnail-preview thumbnail-preview-native" aria-hidden="true"/>
 }
 
 function YouTubePreview({id}:{id:string}){
@@ -84,6 +91,7 @@ export function Thumbnail({video:v,onWatch,progress,checked}:{video:Video;onWatc
  }
  useEffect(()=>{
    if(!previews)stop()
+   if(isMac&&previews)void prepareMacPreviews().catch(()=>{})
    const hidden=()=>{if(document.hidden)stop()}
    document.addEventListener('visibilitychange',hidden)
    return ()=>{
@@ -94,7 +102,7 @@ export function Thumbnail({video:v,onWatch,progress,checked}:{video:Video;onWatc
  return <button className="thumbnail video-thumbnail" aria-label={'Watch '+v.title} onClick={()=>{stop();onWatch(v)}} onMouseEnter={start} onMouseLeave={stop} onBlur={stop}>
    <span className="thumb-placeholder" aria-hidden="true"><Play size={21}/></span>
    {v.image&&<img src={v.image} loading="lazy" decoding="async" alt=""/>}
-   {previewId===v.id&&(isMac?<MacYouTubePreview key={v.id} id={v.id}/>:<YouTubePreview key={v.id} id={v.id}/>)}
+   {previewId===v.id&&(isMac?<MacVideoPreview key={v.id} id={v.id} poster={v.image}/>:<YouTubePreview key={v.id} id={v.id}/>)}
    {v.duration>0&&<span className="duration">{clock(v.duration)}</span>}
    {v.live&&<span className="live-badge">Live</span>}
    {!!(v.scheduledAt||v.upcoming)&&!v.live&&<span className="live-badge scheduled-badge">Scheduled</span>}

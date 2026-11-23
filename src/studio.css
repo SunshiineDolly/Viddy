@@ -565,3 +565,10 @@
 .thumbnail>.thumbnail-preview.thumbnail-preview-mac{opacity:1}
 
 .update-notice{width:min(440px,calc(100vw - 48px));padding:26px;border:1px solid var(--border);border-radius:20px;background:var(--panel);color:var(--text);box-shadow:0 24px 90px #0006}.update-notice::backdrop{background:#0008}.update-notice h2{font-size:25px;margin:10px 0}.update-notice p{line-height:1.55;color:var(--sub)}.update-notice>.row{justify-content:flex-end;gap:10px;margin-top:24px}
+.thumbnail>.thumbnail-preview.thumbnail-preview-native{opacity:1}
+.thumbnail-preview-native video{width:100%;height:100%;display:block;object-fit:cover;pointer-events:none;background:transparent}
+.card:has(.thumbnail-preview-native){content-visibility:visible}
+.preview-unavailable{position:absolute;left:8px;bottom:8px;z-index:3;padding:4px 7px;border-radius:6px;background:rgba(0,0,0,.78);color:white;font-size:11px;pointer-events:none}
+.thumbnail-preview-native:not([data-playing=true])::after{content:'';position:absolute;right:10px;top:10px;width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:var(--a);border-radius:50%;animation:preview-loading .8s linear infinite}
+@keyframes preview-loading{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.thumbnail-preview-native:not([data-playing=true])::after{animation:none}}

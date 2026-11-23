@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {spawn} from 'node:child_process'
-import {mkdtempSync,writeFileSync,rmSync,readFileSync} from 'node:fs'
+import {mkdirSync,mkdtempSync,writeFileSync,rmSync,readFileSync} from 'node:fs'
 import {resolve,join,extname,sep} from 'node:path'
 import http from 'node:http'
 import {setTimeout as wait} from 'node:timers/promises'
@@ -9,6 +9,7 @@ import net from 'node:net'
 // Isolated preview integration check. Synthetic library; real public YouTube playback.
 const root=mkdtempSync(join(process.env.TEMP,'puretube-features-'))
 const web=http.createServer(async(req,res)=>{
+ if(req.url==='/preview-check.mp4'){res.setHeader('Content-Type','video/mp4');res.end(readFileSync('docs/autoplay-probe.mp4'));return}
  if(req.url.split('?')[0]==='/player.html'){res.setHeader('Content-Type','text/html');res.end(readFileSync('docs/player.html'));return}
  if(req.url.startsWith('/preview?')||req.url.startsWith('/player?')){
   const id=new URL(req.url,'http://localhost').searchParams.get('id');if(!/^[\w-]{11}$/.test(id??'')){res.writeHead(404).end();return}
@@ -31,7 +32,7 @@ const navigate=name=>value(`document.querySelector('.sidebar [aria-label=${JSON.
 
 try {
  ws=await connect(await eventually(async()=>(await pages()).find(p=>p.type==='page')))
- const report={usedIsolatedProfile:true,realLibraryTouched:false,fixtureOnly:false}
+ const report={usedIsolatedProfile:true,realLibraryTouched:false,fixtureOnly:true}
  await call('Page.enable')
  const fixture=`(()=>{
  Object.defineProperty(navigator,'platform',{value:localStorage.getItem('preview-platform')??'MacIntel'});
@@ -46,6 +47,8 @@ try {
  window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>0,unregisterCallback:()=>{},invoke:async(cmd,args={})=>{
   if(cmd==='save'){window.fixture.data=args.data;return null}
   if(cmd==='original_player'){window.fixture.originalWindows=(window.fixture.originalWindows??0)+1;return null}
+  if(cmd==='preview_prepare')return null;
+  if(cmd==='preview_stream')return 'http://127.0.0.1:'+PREVIEW_PORT+'/preview-check.mp4';
   if(cmd==='youtube_embed_port')return PREVIEW_PORT;
   if(cmd==='youtube_player_url')return 'http://127.0.0.1:'+PREVIEW_PORT+'/player.html#'+new URLSearchParams({id:args.id,mode:args.mode});
   if(cmd==='load')return window.fixture.data;
@@ -72,14 +75,17 @@ try {
  const leave=()=>call('Input.dispatchMouseEvent',{type:'mouseMoved',x:5,y:5});
  await value('window.previewMessages=[];window.addEventListener("message",e=>{if(e.data?.type==="viddy-video-preview")window.previewMessages.push(e.data)})');
  console.log('Testing platform',await value('navigator.platform'));
- await hover();await eventually(()=>value('window.previewMessages?.some(m=>m.state==="playing")'),60000);
- assert.equal(await value('document.querySelectorAll(".thumbnail-motion-preview").length'),0);
- console.log('Mac player is playing');
- const source=await value('document.querySelector(".thumbnail-preview-mac iframe").contentDocument.querySelector("iframe").src');assert(source.startsWith('https://www.youtube.com/embed/'));assert.equal(new URL(source).searchParams.get('origin'),'http://127.0.0.1:'+web.address().port);
- const time=await value('document.querySelector(".thumbnail-preview-mac iframe").contentWindow.viddyPreviewPlayer.getCurrentTime()');await wait(1300);const later=await value('document.querySelector(".thumbnail-preview-mac iframe").contentWindow.viddyPreviewPlayer.getCurrentTime()');assert(later>time);
- await value('window.dispatchEvent(new MessageEvent("message",{origin:"https://example.invalid",data:{type:"viddy-video-preview",id:"jNQXAC9IVRw",state:"error"}}))');assert(await value('!!document.querySelector(".thumbnail-preview-mac iframe")'));
- report.macUsesVideoPlayer=true;report.playerTimeAdvances=true;report.noImageSubstitute=true;report.matchingHttpOrigin=true;report.invalidMessagesIgnored=true;
- await leave();await eventually(()=>value('!document.querySelector(".thumbnail-preview iframe")'));report.stopsOnLeave=true;
+ await hover();await eventually(()=>value('!!document.querySelector(".thumbnail-preview-native[data-playing=true] video")'),20000);
+ assert.equal(await value('document.querySelectorAll(".thumbnail-preview-native iframe").length'),0);
+ assert.equal(await value('document.querySelector(".thumbnail-preview-native video").muted'),true);
+ assert.equal(await value('document.querySelector(".thumbnail-preview-native video").controls'),false);
+ const time=await value('document.querySelector(".thumbnail-preview-native video").currentTime');await wait(350);const later=await value('document.querySelector(".thumbnail-preview-native video").currentTime');assert.notEqual(later,time);
+ assert(await value('document.querySelector(".thumbnail-preview-native video").videoWidth>0'));
+ await value('window.dispatchEvent(new MessageEvent("message",{origin:"https://example.invalid",data:{type:"viddy-video-preview",id:"jNQXAC9IVRw",state:"error"}}))');assert(await value('!!document.querySelector(".thumbnail-preview-native video")'));
+ report.macUsesNativeVideo=true;report.ownedVideoTimeAdvances=true;report.previewIsMuted=true;report.noYouTubePosterOrControls=true;report.invalidMessagesIgnored=true;
+ await value('window.lastPreviewVideo=document.querySelector(".thumbnail-preview-native video")');await leave();await eventually(()=>value('!document.querySelector(".thumbnail-preview-native video")'));
+ assert(await value('window.lastPreviewVideo.paused&&!window.lastPreviewVideo.getAttribute("src")'));report.stopsOnLeave=true;
+
  if(process.env.VIDDY_FULL_PLAYER){
   await value('window.playerSamples=[];window.addEventListener("message",e=>{if(e.data?.type==="viddy-player")window.playerSamples.push(e.data)})');
   const click=await value('(()=>{const r=document.querySelector(".content > div:not([hidden]) .card .thumbnail").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');await call('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...click});await call('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...click});
@@ -97,8 +103,8 @@ try {
   await value('Object.defineProperty(document,"hidden",{value:true,configurable:true});document.dispatchEvent(new Event("visibilitychange"))');await eventually(()=>value('!document.querySelector(".thumbnail-preview iframe")'));report.stopsWhenHidden=true;
   await leave();await value('localStorage.setItem("preview-platform","Win32");localStorage.setItem("preview-reduced","yes")');await call('Page.reload');await eventually(()=>value('!!document.querySelector(".sidebar [aria-label=Settings]:not(:disabled)")'));await hover();await wait(1100);assert.equal(await value('!!document.querySelector(".thumbnail-preview iframe")'),false);report.reducedMotionRespected=true;
  }
- report.realYouTubePlayback=true;
- writeFileSync(process.env.VIDDY_REAL_PREVIEW?'artifacts/video-preview-public-verification.json':'artifacts/video-preview-verification.json',JSON.stringify(report,null,2));console.log(report);
+ report.ownedClipPlaybackVerified=true;
+ mkdirSync('artifacts',{recursive:true});writeFileSync(process.env.VIDDY_REAL_PREVIEW?'artifacts/video-preview-public-verification.json':'artifacts/video-preview-verification.json',JSON.stringify(report,null,2));console.log(report);
 } finally {
  try{await call('Browser.close')}catch{child.kill()}
  ws?.close()

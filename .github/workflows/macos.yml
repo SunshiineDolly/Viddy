@@ -59,7 +59,7 @@ jobs:
           cargo build --release --locked --target aarch64-apple-darwin --manifest-path src-tauri/Cargo.toml --example mac-preview-check --features tauri/custom-protocol
           python3 - <<'PY'
           import subprocess, json, os, time
-          subprocess.run(['src-tauri/target/aarch64-apple-darwin/release/examples/mac-preview-check'], timeout=100, check=True)
+          subprocess.run(['src-tauri/target/aarch64-apple-darwin/release/examples/mac-preview-check'], timeout=240, check=True)
           for _ in range(100):
               with open(os.environ['VIDDY_PREVIEW_REPORT']) as f: report = json.load(f)
               if report.get('restartVerified'): break
@@ -67,10 +67,8 @@ jobs:
           assert report.get('restartVerified') and report.get('previewsCanBeDisabled') and report.get('mainPlayerReady'), report
           assert report.get('nativeMutedAutoplay') and report.get('nativeAudioAutoplay'), report
           assert any(s.get('state') == 'ready' for s in report.get('states', [])), report
-          if report.get('externalPlaybackBlockedByYouTube'):
-              print('::warning::YouTube bot verification blocked live playback on this runner; native player loading, preference and restart passed. Real Mac playback remains unverified.')
-          else:
-              assert report.get('videoTimeAdvanced'), report
+          assert report.get('videoTimeAdvanced') and report.get('previewMuted') and report.get('stopsOnLeave'), report
+          assert report.get('sourceIsHTTPSGoogleVideo') and report.get('decodedFrames', 0) > 0, report
           print(json.dumps(report, indent=2))
           PY
       - uses: actions/upload-artifact@v4

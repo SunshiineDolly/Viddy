@@ -38,6 +38,8 @@ jobs:
       - run: npm run tauri build -- --ci --bundles nsis
       - name: Verify recommendation growth and loading recovery
         run: node tests/recommendation-growth-smoke.mjs
+      - name: Verify muted thumbnail video and Windows preview regression
+        run: node tests/thumbnail-preview-smoke.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: Viddy-Windows-sync-test

@@ -14,6 +14,10 @@ if(isMac)window.addEventListener('message',event=>{
  recent.push({mode:data.mode==='preview'?'preview':'watch',ready:data.ready,lastEvent:data.lastEvent.slice(0,50),attempts:data.attempts,state:data.state,error:Number.isFinite(data.error)?data.error:null,build:typeof data.build==='string'?data.build.slice(0,20):'unknown'})
  if(recent.length>12)recent.shift()
 })
+export function recordNativePreview(event:string,error:number|null=null){
+ recent.push({mode:'preview',ready:['source-ready','playing','time-advanced'].includes(event),lastEvent:'native-video:'+event,attempts:1,state:event==='time-advanced'||event==='playing'?1:-1,error,build:'0.26.11'})
+ if(recent.length>12)recent.shift()
+}
 export function copyPlaybackDiagnostics(){
  const contents=invoke<Record<string,unknown>>('playback_diagnostics').then(native=>JSON.stringify({...native,engine:navigator.userAgent,players:recent},null,2))
  // WebKit requires starting the clipboard write inside the click gesture.

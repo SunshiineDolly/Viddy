@@ -268,6 +268,7 @@ fn main() {
         downloads::download_list,
         downloads::download_video,
         downloads::preview_stream,
+        downloads::preview_prepare,
         downloads::download_cancel,
         downloads::open_downloads,
         comments::video_comments,
@@ -441,6 +442,8 @@ fn main() {
                         | "watch_creator"
                         | "youtube_embed_port"
                         | "youtube_player_url"
+                        | "preview_prepare"
+                        | "preview_stream"
                 );
             if invoke.message.webview_ref().label() != "main" && !mini {
                 invoke

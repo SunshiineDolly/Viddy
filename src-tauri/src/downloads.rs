@@ -35,6 +35,9 @@ pub struct Downloads {
     children: Mutex<HashMap<String, Arc<Mutex<Child>>>>,
     cancelled: Mutex<HashSet<String>>,
     tools: Mutex<()>,
+    preview_tools: std::sync::OnceLock<HashMap<String,PathBuf>>,
+    preview_gate: Mutex<()>,
+    preview_cache: Mutex<HashMap<String,(std::time::Instant,String)>>,
     destination: Mutex<PathBuf>,
     quality: Mutex<u32>,
     record: PathBuf,
@@ -75,6 +78,9 @@ impl Downloads {
             children: Mutex::new(HashMap::new()),
             cancelled: Mutex::new(HashSet::new()),
             tools: Mutex::new(()),
+            preview_tools: std::sync::OnceLock::new(),
+            preview_gate: Mutex::new(()),
+            preview_cache: Mutex::new(HashMap::new()),
             destination: Mutex::new(destination),
             quality: Mutex::new(quality),
             record,
@@ -159,20 +165,25 @@ struct Tool {
     sha256: String,
     files: Vec<ToolFile>,
 }
-#[cfg(not(target_os = "macos"))]
-fn prepare(
+fn prepare_verified(
     app: &tauri::AppHandle,
     state: &Downloads,
     id: &str,
     include_ffmpeg: bool,
 ) -> Result<HashMap<String, PathBuf>> {
     let _guard = state.tools.lock().map_err(|_| "Download setup is busy.")?;
+    #[cfg(not(target_os="macos"))]
     let root = PathBuf::from(
         std::env::var_os("LOCALAPPDATA").ok_or("Windows app-data folder is unavailable.")?,
     )
     .join("PureTube/download-tools");
+    #[cfg(target_os="macos")]
+    let root=app.path().app_cache_dir().map_err(|_|"Could not locate preview storage.")?.join("preview-tools");
+    #[cfg(not(target_os="macos"))]
     let mut tools: Vec<Tool> = serde_json::from_str(include_str!("../download-tools.json"))
         .map_err(|_| "Invalid download tool manifest.")?;
+    #[cfg(target_os="macos")]
+    let mut tools: Vec<Tool> = serde_json::from_str::<HashMap<String,Vec<Tool>>>(include_str!("../macos-preview-tools.json")).map_err(|_|"Invalid preview helper manifest.")?.remove(std::env::consts::ARCH).ok_or("Unsupported Mac architecture.")?;
     if !include_ffmpeg {
         tools.retain(|tool| tool.name != "ffmpeg");
     }
@@ -188,19 +199,28 @@ fn prepare(
         }
         let dir = root.join(format!("{}-{}", tool.name, &tool.sha256[..12]));
         fs::create_dir_all(&dir).map_err(|_| "Could not create the download tools folder.")?;
+        #[cfg(target_os="macos")]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if fs::symlink_metadata(&dir).is_ok_and(|m|m.file_type().is_symlink()) {return Err("Unsafe helper folder.".into());}
+            fs::set_permissions(&dir,fs::Permissions::from_mode(0o700)).map_err(|_|"Could not secure preview storage.")?;
+            for name in tool.files.iter().map(|f|f.name.as_str()).chain(std::iter::once("package.download")){
+                if fs::symlink_metadata(dir.join(name)).is_ok_and(|m|m.file_type().is_symlink()){return Err("Unsafe helper file.".into());}
+            }
+        }
         let ready = tool
             .files
             .iter()
             .all(|f| digest(&dir.join(&f.name)).ok().as_deref() == Some(f.sha256.as_str()));
         if !ready {
-            state.update(
+            if id!="preview" { state.update(
                 app,
                 id,
                 "preparing",
                 0.,
                 &format!("Preparing downloads ({}/{})…", index + 1, tools.len()),
                 None,
-            );
+            ); }
             let archive = dir.join("package.download");
             if digest(&archive).ok().as_deref() != Some(tool.sha256.as_str()) {
                 let mut response = client
@@ -284,21 +304,32 @@ fn prepare(
             let _ = fs::remove_file(&archive);
         }
         for file in &tool.files {
+            #[cfg(target_os="macos")]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(dir.join(&file.name),fs::Permissions::from_mode(0o700)).map_err(|_|"Could not enable the verified preview helper.")?;
+                executables.insert(format!("{}.exe",file.name),dir.join(&file.name));
+            }
+            #[cfg(not(target_os="macos"))]
             executables.insert(file.name.clone(), dir.join(&file.name));
         }
     }
     Ok(executables)
 }
+#[cfg(not(target_os="macos"))]
+fn prepare(app:&tauri::AppHandle,state:&Downloads,id:&str,include_ffmpeg:bool)->Result<HashMap<String,PathBuf>>{prepare_verified(app,state,id,include_ffmpeg)}
+
 // Finder launches do not inherit a shell's Homebrew PATH. Resolve helpers from
 // the standard Apple Silicon and Intel prefixes, without downloading Windows binaries.
 #[cfg(target_os = "macos")]
 fn prepare(
-    _app: &tauri::AppHandle,
+    app: &tauri::AppHandle,
     state: &Downloads,
     id: &str,
     include_ffmpeg: bool,
 ) -> Result<HashMap<String, PathBuf>> {
     if state.stopped(id) { return Err("Cancelled".into()); }
+    if !include_ffmpeg {return prepare_verified(app,state,id,false);}
     let names: &[&str] = if include_ffmpeg {
         &["yt-dlp", "deno", "ffmpeg", "ffprobe"]
     } else {
@@ -318,33 +349,74 @@ fn prepare(
     }
     Ok(executables)
 }
+fn preview_tools(app:&tauri::AppHandle,state:&Downloads)->Result<HashMap<String,PathBuf>>{
+    if let Some(tools)=state.preview_tools.get(){return Ok(tools.clone());}
+    let tools=prepare(app,state,"preview",false)?;
+    let _=state.preview_tools.set(tools.clone());Ok(tools)
+}
 #[tauri::command]
-pub async fn preview_stream(app: tauri::AppHandle, id: String) -> Result<String> {
+pub async fn preview_prepare(app:tauri::AppHandle)->Result<()>{
+    tauri::async_runtime::spawn_blocking(move||preview_tools(&app,&app.state::<Downloads>()).map(|_|())).await.map_err(|_|"Could not prepare previews.")?
+}
+struct PreviewProcess<'a>{state:&'a Downloads,child:Arc<Mutex<Child>>}
+impl Drop for PreviewProcess<'_>{fn drop(&mut self){kill(&self.child);if let Ok(mut children)=self.state.children.lock(){children.remove("preview");}}}
+fn preview_url(raw:&str)->Option<String>{
+    let url=reqwest::Url::parse(raw.trim()).ok()?;
+    (url.scheme()=="https"&&url.username().is_empty()&&url.password().is_none()&&url.fragment().is_none()&&url.host_str().is_some_and(|h|h.ends_with(".googlevideo.com"))).then(||url.to_string())
+}
+#[tauri::command]
+pub async fn preview_stream(app: tauri::AppHandle, id: String, fresh:Option<bool>) -> Result<String> {
     if id.len()!=11 || !id.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'_'||b==b'-') { return Err("Invalid video.".into()); }
     tauri::async_runtime::spawn_blocking(move || {
         let state=app.state::<Downloads>();
-        let tools=prepare(&app,&state,"preview",false)?;
+        let _guard=state.preview_gate.lock().map_err(|_|"Preview is busy.")?;
+        if fresh==Some(true){state.preview_cache.lock().map_err(|_|"Preview cache is busy.")?.remove(&id);}
+        if let Some((at,url))=state.preview_cache.lock().map_err(|_|"Preview cache is busy.")?.get(&id){
+            if at.elapsed()<Duration::from_secs(300){return Ok(url.clone());}
+        }
+        let tools=preview_tools(&app,&state)?;
         let mut command=Command::new(&tools["yt-dlp.exe"]);
         command.args([
-            "--ignore-config", "--no-playlist", "--no-warnings", "--no-cache-dir",
-            "--socket-timeout", "5", "--retries", "0",
-            "--extractor-retries", "0", "--match-filter", "!is_live & !is_upcoming",
-            "--get-url", "--js-runtimes", &format!("deno:{}", tools["deno.exe"].display()),
-            // WebView2 wants a file URL rather than the HLS playlists also listed as MP4.
-            "-f", "b[protocol=https][ext=mp4][height>=360][height<=480]/bv[protocol=https][vcodec^=avc1][height>=360][height<=480]/bv[protocol=https][ext=webm][height>=360][height<=480]/b[protocol=https][ext=mp4][height<=480]/bv[protocol=https][vcodec^=avc1][height<=480]",
+            "--ignore-config", "--no-plugin-dirs", "--no-playlist", "--no-warnings", "--no-cache-dir",
+            "--socket-timeout", "5", "--retries", "0", "--extractor-retries", "0",
+            "--match-filter", "!is_live & !is_upcoming", "--get-url", "--js-runtimes", &format!("deno:{}", tools["deno.exe"].display()),
+            "-f", "bv[protocol=https][ext=mp4][vcodec^=avc1][height<=480]/b[protocol=https][ext=mp4][vcodec^=avc1][height<=480]",
             "--", &format!("https://www.youtube.com/watch?v={id}"),
-        ]);
+        ]).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(windows)]
         command.creation_flags(0x08000000);
-        let output=command.output().map_err(|_|"Preview could not start.")?;
-        if !output.status.success(){return Err("A smooth preview is not available for this video.".into());}
-        let raw=String::from_utf8_lossy(&output.stdout);
-        for line in raw.lines(){if let Ok(url)=reqwest::Url::parse(line.trim()){
-            if url.scheme()=="https"&&url.host_str().is_some_and(|h|h.ends_with(".googlevideo.com")){return Ok(url.to_string());}
+        let child=Arc::new(Mutex::new(command.spawn().map_err(|_|"Preview could not start.")?));
+        state.children.lock().map_err(|_|"Preview is busy.")?.insert("preview".into(),child.clone());
+        let process=PreviewProcess{state:&state,child};
+        let deadline=std::time::Instant::now()+Duration::from_secs(25);
+        loop {
+            let status=process.child.lock().map_err(|_|"Preview is busy.")?.try_wait().map_err(|_|"Could not read preview status.")?;
+            if status.is_some(){break;}
+            if state.stopped("preview"){return Err("Cancelled".into());}
+            if std::time::Instant::now()>=deadline {return Err("Preview source timed out. Try another video.".into());}
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let output={
+            let mut child=process.child.lock().map_err(|_|"Preview is busy.")?;
+            let status=child.wait().map_err(|_|"Preview could not start.")?;
+            let mut stdout=Vec::new();let mut stderr=Vec::new();
+            if let Some(out)=child.stdout.take(){out.take(16384).read_to_end(&mut stdout).map_err(|_|"Could not read preview source.")?;}
+            if let Some(out)=child.stderr.take(){out.take(16384).read_to_end(&mut stderr).map_err(|_|"Could not read preview status.")?;}
+            std::process::Output{status,stdout,stderr}
+        };
+        if !output.status.success(){
+            let reason=String::from_utf8_lossy(&output.stderr).to_lowercase();
+            return Err(if reason.contains("confirm")&&reason.contains("bot"){"YouTube is blocking anonymous playback on this network."}else{"A video preview is not available for this video."}.into());
+        }
+        for line in String::from_utf8_lossy(&output.stdout).lines(){if let Some(url)=preview_url(line){
+            let mut cache=state.preview_cache.lock().map_err(|_|"Preview cache is busy.")?;
+            if cache.len()>=128 {if let Some(oldest)=cache.iter().min_by_key(|(_,v)|v.0).map(|(id,_)|id.clone()){cache.remove(&oldest);}}
+            cache.insert(id.clone(),(std::time::Instant::now(),url.clone()));return Ok(url);
         }}
-        Err("A smooth preview is not available for this video.".into())
+        Err("A video preview is not available for this video.".into())
     }).await.map_err(|_|"Preview could not be prepared.")?
 }
+
 fn worker(app: tauri::AppHandle, id: String) -> Result<()> {
     let state = app.state::<Downloads>();
     let job = state
@@ -743,5 +815,23 @@ mod migration_tests {
         assert_eq!(restored_directory(&job, &renamed), original.to_string_lossy());
         job.file = None;
         assert_eq!(restored_directory(&job, &renamed), renamed.to_string_lossy());
+    }
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+    #[test]
+    fn preview_urls_reject_untrusted_hosts_credentials_and_insecure_protocols(){
+        assert!(preview_url("https://r1.googlevideo.com/videoplayback?expire=123").is_some());
+        for value in ["http://r1.googlevideo.com/a","https://googlevideo.com.attacker.invalid/a","https://user:secret@r1.googlevideo.com/a","file:///tmp/video.mp4","https://r1.googlevideo.com/a#fragment"] {assert!(preview_url(value).is_none());}
+    }
+    #[test]
+    fn both_mac_architectures_have_pinned_official_preview_helpers(){
+        let tools:HashMap<String,Vec<Tool>>=serde_json::from_str(include_str!("../macos-preview-tools.json")).unwrap();
+        for arch in ["aarch64","x86_64"] {
+            let platform=&tools[arch];assert_eq!(platform.len(),2);
+            for tool in platform {assert!(tool.url.starts_with("https://github.com/yt-dlp/yt-dlp/releases/download/")||tool.url.starts_with("https://github.com/denoland/deno/releases/download/"));assert_eq!(tool.sha256.len(),64);assert!(tool.sha256.bytes().all(|b|b.is_ascii_hexdigit()));assert_eq!(tool.files.len(),1);assert_eq!(tool.files[0].sha256.len(),64);}
+        }
     }
 }
