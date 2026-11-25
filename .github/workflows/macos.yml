@@ -16,10 +16,11 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 45
     env:
       MACOSX_DEPLOYMENT_TARGET: '14.0'
+      VIDDY_NATIVE_TARGET: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,7 +37,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: cargo test --release --locked --target aarch64-apple-darwin --manifest-path src-tauri/Cargo.toml
+      - run: cargo test --release --locked --target "$VIDDY_NATIVE_TARGET" --manifest-path src-tauri/Cargo.toml
       - name: Verify published HTTPS player matches this source
         run: |
           python3 - <<'PY'
@@ -86,7 +87,7 @@ jobs:
       - name: Verify Keychain access across signed updates
         if: github.event_name != 'pull_request'
         run: |
-          cargo build --release --locked --target aarch64-apple-darwin --manifest-path src-tauri/Cargo.toml --example mac-keychain-check
+          cargo build --release --locked --target "$VIDDY_NATIVE_TARGET" --manifest-path src-tauri/Cargo.toml --example mac-keychain-check
           python3 scripts/verify-mac-signing.py
       - uses: actions/upload-artifact@v4
         if: always()
@@ -154,10 +155,10 @@ jobs:
           PURETUBE_ISOLATED_PROFILE: ${{ runner.temp }}/viddy-preview-check
           VIDDY_PREVIEW_REPORT: ${{ runner.temp }}/viddy-preview-report.json
         run: |
-          cargo build --release --locked --target aarch64-apple-darwin --manifest-path src-tauri/Cargo.toml --example mac-preview-check --features tauri/custom-protocol
+          cargo build --release --locked --target "$VIDDY_NATIVE_TARGET" --manifest-path src-tauri/Cargo.toml --example mac-preview-check --features tauri/custom-protocol
           python3 - <<'PY'
           import subprocess, json, os, time
-          subprocess.run(['src-tauri/target/aarch64-apple-darwin/release/examples/mac-preview-check'], timeout=240, check=True)
+          subprocess.run(['src-tauri/target/x86_64-apple-darwin/release/examples/mac-preview-check'], timeout=240, check=True)
           for _ in range(100):
               with open(os.environ['VIDDY_PREVIEW_REPORT']) as f: report = json.load(f)
               if report.get('restartVerified'): break

@@ -9,7 +9,7 @@ import tempfile
 
 root = Path(tempfile.mkdtemp(prefix="viddy-signing-", dir=os.environ["RUNNER_TEMP"]))
 identity = os.environ["VIDDY_MAC_SIGNING_IDENTITY"]
-helper = Path("src-tauri/target/aarch64-apple-darwin/release/examples/mac-keychain-check")
+helper = Path("src-tauri/target") / os.environ.get("VIDDY_NATIVE_TARGET", "aarch64-apple-darwin") / "release/examples/mac-keychain-check"
 requirements = []
 hashes = []
 apps = []
