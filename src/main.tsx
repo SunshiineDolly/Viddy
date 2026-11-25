@@ -39,6 +39,7 @@ import {LiveChat} from './live-chat'
 import {useWatchTogether,WatchTogether,type RoomPlayback} from './watch-together'
 import './styles.css'
 import './studio.css'
+import './readability.css'
 
 type Name='home'|'discover'|'following'|'subscriptions'|'library'|'later'|'history'|'settings'|'downloads'
 type Route={name:Name}|{name:'search';query:string;source?:SearchSource}|{name:'live';query?:string;mode?:'live'|'scheduled'}|{name:'channel';id:string;tab?:ChannelTab}|{name:'watch';video:Video}
@@ -99,6 +100,7 @@ function App() {
  const feeds=usePublicFeeds(ready?followIds.filter(id=>!s.blocked.includes(id)):[])
  const followedLive=useFollowedLive(ready?followIds.filter(id=>!s.blocked.includes(id)):[])
  useEffect(()=>applyPalette(s.theme,s.accent),[s.theme,s.accent])
+ useEffect(()=>{document.documentElement.dataset.interfaceSize=s.interfaceSize},[s.interfaceSize])
  useEffect(()=>{document.documentElement.dataset.cursor=s.themedCursor?'themed':'system'},[s.themedCursor])
  useEffect(()=>setText(''),[route])
  useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),2600);return()=>clearTimeout(timer)},[notice])

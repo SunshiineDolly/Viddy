@@ -28,6 +28,7 @@ export function MiniPlayer(){
  },[])
  useEffect(()=>{if(payload)applyPalette(payload.theme as Mode,readAccent(payload.accent))},[payload?.theme,payload?.accent])
  useEffect(()=>{document.documentElement.dataset.cursor=data.settings.themedCursor?'themed':'system'},[data.settings.themedCursor])
+ useEffect(()=>{document.documentElement.dataset.interfaceSize=data.settings.interfaceSize},[data.settings.interfaceSize])
  const current=payload?.video
  useEffect(()=>{if(!current?.id)return;let active=true;void lookupCreator(current.id).then(c=>{if(!active)return;setPayload(old=>old?.video.id===current.id?{...old,video:{...old.video,title:c.title||old.video.title,channelId:c.id,channel:c.name,views:c.views,date:c.date}}:old)},()=>{});return()=>{active=false}},[current?.id])
  const queue=useUpNext(current??{id:'',title:'',channelId:'',channel:'',description:'',image:'',date:'',duration:0,embeddable:true,paid:false,shorts:false},data,[],played)

@@ -42,6 +42,8 @@ jobs:
         run: node tests/thumbnail-preview-smoke.mjs
       - name: Verify queue navigation and pop-out persistence in Windows and Mac UI modes
         run: node tests/queue-navigation-smoke.mjs
+      - name: Verify readable interface sizes and small-window layout
+        run: node tests/readability-smoke.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: Viddy-Windows-sync-test

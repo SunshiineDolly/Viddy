@@ -2,7 +2,7 @@ import {channelId, videoId,type Video} from './domain.ts'
 import {topics} from './topics.ts'
 import {readAccent,type Accent} from './palettes.ts'
 export type Settings = {
-  theme:'dark'|'light'; accent:Accent; collapsed:boolean; density:'compact'|'comfortable';
+  theme:'dark'|'light'; accent:Accent; collapsed:boolean; density:'compact'|'comfortable'; interfaceSize:'standard'|'large'|'extra-large';
   keywords:string[]; blocked:string[]; history:boolean; progress:boolean;
   reminder:number; showTime:boolean;  tray:boolean;closeToTray:boolean; autoplay:boolean;videoPreviews:boolean;intro:boolean;themedCursor:boolean
 }
@@ -12,7 +12,7 @@ export type Library = {
  checked:Record<string,string>; interests:Record<string,number>; viewing:Record<string,{seconds:number;at:number}>; tasteResetAt?:number; daily:{date:string;seconds:number}; liveReminders:Record<string,LiveReminder>;dismissed:string[]
 }
 export type LiveReminder={title:string;at:number}
-export const defaults:Settings = {theme:'dark',accent:'rose',collapsed:false,density:'comfortable',keywords:[],blocked:[],history:true,progress:true,reminder:0,showTime:false,tray:false,closeToTray:false,autoplay:true,videoPreviews:true,intro:true,themedCursor:true}
+export const defaults:Settings = {theme:'dark',accent:'rose',collapsed:false,density:'comfortable',interfaceSize:'large',keywords:[],blocked:[],history:true,progress:true,reminder:0,showTime:false,tray:false,closeToTray:false,autoplay:true,videoPreviews:true,intro:true,themedCursor:true}
 export const empty = ():Library => ({version:1,profileName:'',profileBio:'',profileEmoji:'',preferredTopics:[],savedVideos:{},settings:{...defaults},follows:[],groups:{},later:[],favorites:[],collections:[],history:{},progress:{},checked:{},interests:{},viewing:{},daily:{date:'',seconds:0},liveReminders:{},dismissed:[]})
 export function recordViewing(data:Library,id:string,elapsed:number,at=Date.now()){
  if(!data.settings.history||!videoId(id)||!Number.isFinite(elapsed)||elapsed<=0)return data.viewing
@@ -36,7 +36,7 @@ export function decode(raw:unknown):Library {
  const r = record(raw)
  if (r.version!==1) throw new Error('This is not a supported Viddy backup.')
  const s=record(r.settings), d=empty(), settings=d.settings
- const choices = {theme:['dark','light'],density:['compact','comfortable']} as const
+ const choices = {theme:['dark','light'],density:['compact','comfortable'],interfaceSize:['standard','large','extra-large']} as const
  for (const k of Object.keys(choices) as (keyof typeof choices)[]) {
    if ((choices[k] as readonly unknown[]).includes(s[k])) Object.assign(settings,{[k]:s[k]})
  }

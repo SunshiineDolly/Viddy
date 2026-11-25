@@ -1,0 +1,42 @@
+/* Text sizing preserves the viewport and media dimensions, so responsive layouts
+   still fit the window. Large is also the default for existing installations. */
+:root { --ui-scale:1.25 }
+:root[data-interface-size=standard] { --ui-scale:1 }
+:root[data-interface-size=extra-large] { --ui-scale:1.5 }
+body { line-height:1.5 }
+.button,input:not([type=checkbox]):not([type=range]),select {
+ min-height:calc(34px * var(--ui-scale));
+}
+.button { white-space:normal;text-align:center }
+.icon { width:calc(32px * var(--ui-scale));height:calc(32px * var(--ui-scale)) }
+.icon.small,.queue-edit-actions .icon { width:calc(26px * var(--ui-scale));height:calc(28px * var(--ui-scale)) }
+.icon svg,.button svg,.sidebar nav button svg { width:calc(17px * var(--ui-scale));height:calc(17px * var(--ui-scale)) }
+.settings label { flex-wrap:wrap;gap:12px }
+.settings select { max-width:100% }
+.searchbar { height:calc(40px * var(--ui-scale)) }
+.searchbar input { min-height:0!important }
+.search-submit { height:100%;flex:none }
+.playlist-transport { flex-wrap:wrap }
+.queue-entry { align-items:flex-start;flex-wrap:wrap;row-gap:6px }
+.queue-entry>button { min-width:140px }
+.queue-edit-actions { margin-left:auto }
+.recommendation-reason { flex-wrap:wrap }
+.recommendation-reason>span,.recommendation-reason button { opacity:1 }
+.sidebar .sidebar-section-label { line-height:1.5 }
+.sidebar nav button>span:not(.nav-live-count) { white-space:normal;overflow:visible;text-overflow:clip }
+@media(min-width:1100px) {
+ :root[data-interface-size=large] .app:not(.collapsed) { grid-template-columns:260px minmax(0,1fr) }
+ :root[data-interface-size=extra-large] .app:not(.collapsed) { grid-template-columns:280px minmax(0,1fr) }
+}
+/* Compact windows retain access to all navigation at the larger sizes. */
+@media(max-height:700px) {
+ .app[data-platform=windows]>.sidebar { overflow-y:auto }
+ .app[data-platform=windows] .sidebar .sidebar-follows { flex:none }
+ .app[data-platform=windows] .sidebar-follow-preview { display:none }
+}
+@media(max-width:900px) {
+ .settings>section { min-width:0 }
+ .settings label { align-items:flex-start }
+ .heading { flex-wrap:wrap }
+ .watch-player-actions { flex-wrap:wrap }
+}
